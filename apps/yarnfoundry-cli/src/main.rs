@@ -6,7 +6,7 @@
 
 use yarnfoundry_core::{Construction, Craft, Gauge, PaletteColor, PaletteSpec, Picture, PictureOptions, Technique, TextOptions, TextWeight, Unit};
 
-const USAGE: &str = "usage: yarnfoundry-cli [--version]\n       yarnfoundry-cli print <file.yarnfoundry> <out.pdf|out.svg|out.png> [--paper letter|a4] [--bw|--symbols] [--page N] [--dpi N] [--title T]\n       yarnfoundry-cli picture <image> <out.yarnfoundry> [--width N] [--colors K]\n       yarnfoundry-cli instructions <file.yarnfoundry>\n       yarnfoundry-cli text \"<words>\" <out.yarnfoundry> [--rows N] [--width N] [--spacing N] [--weight regular|bold|heavy] [--min-rows N] [--outline]";
+const USAGE: &str = "usage: yarnfoundry-cli [--version]\n       yarnfoundry-cli print <file.yarnfoundry> <out.pdf|out.svg|out.png> [--paper letter|a4] [--bw|--symbols] [--page N] [--dpi N] [--title T]\n       yarnfoundry-cli picture <image> <out.yarnfoundry> [--width N] [--colors K]\n       yarnfoundry-cli instructions <file.yarnfoundry>\n       yarnfoundry-cli model <file.stl|file.obj|sample:NAME> [--height N] [--unit in|cm] [--up x|y|z] [--png out.png]\n       yarnfoundry-cli text \"<words>\" <out.yarnfoundry> [--rows N] [--width N] [--spacing N] [--weight regular|bold|heavy] [--min-rows N] [--outline]";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -19,6 +19,7 @@ fn main() {
         Some("text") => text(&args[1..]),
         Some("print") => print(&args[1..]),
         Some("instructions") => instructions(&args[1..]),
+        Some("model") => model(&args[1..]),
         Some(other) => Err(format!("unknown command: {other}\n{USAGE}")),
     };
     if let Err(e) = result {
@@ -124,5 +125,59 @@ fn print(args: &[String]) -> Result<(), String> {
     };
     std::fs::write(output, bytes).map_err(|e| format!("{output}: {e}"))?;
     println!("{} pages -> {output}", pages.len());
+    Ok(())
+}
+
+/// `model`: loads an STL/OBJ (or a built-in `sample:sphere|capsule|cone|snowman`), checks it, sets it upright at the
+/// finished height and says what it found. `--png` draws it.
+fn model(args: &[String]) -> Result<(), String> {
+    use yarnfoundry_core::{Axis, models};
+    let Some(input) = args.first() else { return Err(USAGE.to_string()) };
+    let value = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1));
+    let (mesh, report) = match input.strip_prefix("sample:") {
+        Some(name) => {
+            let m = match name {
+                "sphere" => models::sphere(1.0),
+                "capsule" => models::capsule(1.0, 1.5),
+                "cone" => models::cone(1.0, 2.0),
+                "snowman" => models::snowman(),
+                _ => return Err("samples: sphere, capsule, cone, snowman".to_string()),
+            };
+            m.checked().map_err(|e| e.to_string())?
+        }
+        None => yarnfoundry_core::import_model(&std::fs::read(input).map_err(|e| format!("{input}: {e}"))?).map_err(|e| e.to_string())?,
+    };
+    let height: f64 = value("--height").map_or(Ok(8.0), |v| v.parse().map_err(|_| "--height needs a number".to_string()))?;
+    let unit = match value("--unit").map(String::as_str) {
+        None | Some("in") => Unit::Inches,
+        Some("cm") => Unit::Cm,
+        Some(_) => return Err("--unit must be in or cm".to_string()),
+    };
+    let up = match value("--up").map(String::as_str) {
+        None => None,
+        Some("x") => Some(Axis::X),
+        Some("y") => Some(Axis::Y),
+        Some("z") => Some(Axis::Z),
+        Some(_) => return Err("--up must be x, y or z".to_string()),
+    };
+    let fitted = mesh.fitted(height, unit, up).map_err(|e| e.to_string())?;
+    let (lo, hi) = fitted.bounds();
+    println!(
+        "{} triangles, {} piece(s); {:.2} in tall, {:.2} x {:.2} in across",
+        report.triangles,
+        report.bodies,
+        hi[2] - lo[2],
+        hi[0] - lo[0],
+        hi[1] - lo[1]
+    );
+    for note in report.notes() {
+        println!("note: {note}");
+    }
+    if let Some(out) = value("--png") {
+        let page = yarnfoundry_render::view3d::mesh_page(&fitted, 600.0, 600.0, &yarnfoundry_render::view3d::Camera::default(), [196, 120, 96]);
+        let png = yarnfoundry_render::png::page_to_png(&page, 144).map_err(|e| e.to_string())?;
+        std::fs::write(out, png).map_err(|e| format!("{out}: {e}"))?;
+        println!("picture -> {out}");
+    }
     Ok(())
 }

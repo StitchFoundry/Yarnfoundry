@@ -29,3 +29,4 @@ Making-of log for the YarnFoundry video. Times are UTC.
 | 2026-11-09 15:40 | Step 5: preview with row numbers, legend, written rows, print and save buttons | PR for #8 (YF-7) | docs/build-story/20261109-1540-issue-8-step5.png |
 | 2026-11-09 15:49 | The web build running in a browser (Chromium): setup typed through to the KING CASHEW chart preview with print buttons | PR for #9 (YF-8) | docs/build-story/20261109-1549-issue-9-web.png |
 | 2026-11-09 15:55 | PR for #10 (dual licence MIT OR Apache-2.0) opened, labelled needs-review, not merged (no visible change) | PR for #10 | |
+| 2026-11-09 17:37 | First 3D model loaded: the built-in snowman (two balls, one closed surface) checked, set upright at 7 in and drawn | PR for #23 (YF-11) | docs/build-story/20261109-1737-issue-23.png |

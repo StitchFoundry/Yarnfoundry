@@ -11,6 +11,7 @@ pub mod pdf;
 pub mod png;
 pub mod svg;
 pub mod symbols;
+pub mod view3d;
 
 use yarnfoundry_core::{Chart, Construction, Craft, Technique, Unit};
 

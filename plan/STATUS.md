@@ -4,3 +4,4 @@
 - YF-6 (#7) merged as PR #18, YF-7 (#8) as PR #19. YF-8 (#9) open and labelled needs-review (adds a workflow; Bruce merges).
 - Next: #10 dual licence (needs-review).
 - Blockers: none.
+- Run 3 (2026-11-09, Bruce: 3D model to figure): YF-11 (#23) 3D import in progress/PR open; next #24 to #28 in order.
