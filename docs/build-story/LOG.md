@@ -8,3 +8,4 @@ Making-of log for the YarnFoundry video. Times are UTC.
 | 2026-11-09 14:19 | PR #11 (YF-0) opened | [#11](https://github.com/StitchFoundry/Yarnfoundry/pull/11) | |
 | 2026-11-09 14:25 | PR #11 (YF-0) CI green, squash-merged | [#11](https://github.com/StitchFoundry/Yarnfoundry/pull/11) | |
 | 2026-11-09 14:26 | PR for YF-1 (#2) opened (no visible change; core model) | see PR | |
+| 2026-11-09 14:31 | First chart from a picture (sunset sample, 60 sts x 56 rows, 5 colours) | PR pending | docs/build-story/20261109-1431-issue-3.png |
