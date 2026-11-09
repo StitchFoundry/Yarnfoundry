@@ -1,12 +1,15 @@
 //! YarnFoundry core: the chart model, gauge math and file format (no UI, no I/O).
 
 pub mod chart;
+pub mod color;
 pub mod file;
 pub mod gauge;
+pub mod picture;
 
 pub use chart::{Chart, ChartError, Construction, Craft, PaletteColor, Technique};
 pub use file::{FileError, from_json, to_json};
 pub use gauge::{Gauge, GaugeError, Unit};
+pub use picture::{PaletteSpec, Picture, PictureError, PictureOptions, chart_from_picture, rows_for_width};
 
 /// The product name shown in window titles and the CLI.
 pub const APP_NAME: &str = "YarnFoundry";

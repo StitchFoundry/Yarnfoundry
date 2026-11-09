@@ -4,4 +4,4 @@ Every file under `assets/` needs a row here (`cargo xtask assets` checks the fil
 
 | File | Source | License | Notes |
 |------|--------|---------|-------|
-| (none yet) | | | |
+| assets/samples/sunset-hills.png | Drawn from scratch by the project (script-generated gradient, circle and hills) | MIT (same as the project) | Sample picture for tests and the build-story screenshots; original, no third-party content |
