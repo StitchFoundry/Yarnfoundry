@@ -1,18 +1,13 @@
 # YarnFoundry roadmap
 
 ## Honest assessment
-Pre-alpha (2026-11-09). A window opens with an empty chart canvas. There is no chart model, no importer and no output yet.
-Self-assessed, measured by behaviour: everything below is NOT done.
+Pre-alpha (2026-11-09). The core works headlessly: gauge math, `.yarnfoundry` files, picture to chart, words to chart, technique rules and written instructions, all tested. The app can open a chart and draw it, but there is no guided setup, no printable output and no web build yet.
+Self-assessed, measured by behaviour: the gaps below are NOT done.
 
 ## Gap list (ranked; each is a GitHub issue)
-1. YF-1 Chart model, gauge math, `.yarnfoundry` file format
-2. YF-2 Picture to chart
-3. YF-3 Words to chart
-4. YF-4 Technique rules (tapestry, intarsia, fair isle, filet)
-5. YF-5 Written row-by-row instructions
-6. YF-6 Chart view and printable chart (PDF/SVG/PNG)
-7. YF-7 Guided 5-step setup and generic yarn palettes
-8. YF-8 Web build on GitHub Pages, `--screenshot`, v0.1.0 notes
+1. YF-6 Chart view and printable chart (PDF/SVG/PNG)
+2. YF-7 Guided 5-step setup and generic yarn palettes
+3. YF-8 Web build on GitHub Pages, `--screenshot`, v0.1.0 notes
 
 ## Shipped so far
 - 2026-11-09 YF-5: written instructions (core, CLI).
