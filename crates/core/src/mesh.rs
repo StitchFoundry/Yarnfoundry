@@ -134,7 +134,7 @@ pub fn parse_stl(bytes: &[u8]) -> Result<Mesh, MeshError> {
         if n > MAX_TRIANGLES {
             return Err(MeshError::TooManyTriangles);
         }
-        for rec in bytes.get(84..).unwrap_or_default().chunks_exact(50) {
+        for rec in bytes.get(84..).unwrap_or_default().as_chunks::<50>().0 {
             for v in 0..3 {
                 let mut p = [0.0; 3];
                 for (a, slot) in p.iter_mut().enumerate() {
@@ -247,7 +247,7 @@ fn weld(soup: &[[f64; 3]]) -> Result<Mesh, MeshError> {
     let mut map: HashMap<[i64; 3], u32> = HashMap::new();
     let mut vertices = Vec::new();
     let mut triangles = Vec::new();
-    for tri in soup.chunks_exact(3) {
+    for tri in soup.as_chunks::<3>().0 {
         let mut t = [0u32; 3];
         for (slot, p) in t.iter_mut().zip(tri) {
             let key = [(p[0] / q).round() as i64, (p[1] / q).round() as i64, (p[2] / q).round() as i64];
