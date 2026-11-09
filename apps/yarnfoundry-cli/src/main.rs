@@ -5,7 +5,7 @@
 
 use yarnfoundry_core::{Construction, Craft, Gauge, PaletteColor, PaletteSpec, Picture, PictureOptions, Technique, TextOptions, Unit};
 
-const USAGE: &str = "usage: yarnfoundry-cli [--version]\n       yarnfoundry-cli picture <image> <out.yarnfoundry> [--width N] [--colors K]\n       yarnfoundry-cli text \"<words>\" <out.yarnfoundry> [--rows N] [--width N] [--spacing N] [--bold] [--outline]";
+const USAGE: &str = "usage: yarnfoundry-cli [--version]\n       yarnfoundry-cli picture <image> <out.yarnfoundry> [--width N] [--colors K]\n       yarnfoundry-cli instructions <file.yarnfoundry>\n       yarnfoundry-cli text \"<words>\" <out.yarnfoundry> [--rows N] [--width N] [--spacing N] [--bold] [--outline]";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -16,6 +16,7 @@ fn main() {
         }
         Some("picture") => picture(&args[1..]),
         Some("text") => text(&args[1..]),
+        Some("instructions") => instructions(&args[1..]),
         Some(other) => Err(format!("unknown command: {other}\n{USAGE}")),
     };
     if let Err(e) = result {
@@ -63,5 +64,20 @@ fn text(args: &[String]) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     std::fs::write(output, yarnfoundry_core::to_json(&chart).map_err(|e| e.to_string())?).map_err(|e| format!("{output}: {e}"))?;
     println!("{} sts x {} rows -> {output}", chart.width, chart.height);
+    Ok(())
+}
+
+fn instructions(args: &[String]) -> Result<(), String> {
+    let Some(input) = args.first() else { return Err(USAGE.to_string()) };
+    let text = std::fs::read_to_string(input).map_err(|e| format!("{input}: {e}"))?;
+    let chart = yarnfoundry_core::from_json(&text).map_err(|e| e.to_string())?;
+    let written = yarnfoundry_core::instructions(&chart);
+    for row in &written.rows {
+        println!("{}", row.text);
+    }
+    println!();
+    for t in &written.totals {
+        println!("{} ({}): {}", t.label, t.name, t.count);
+    }
     Ok(())
 }

@@ -17,3 +17,4 @@ Making-of log for the YarnFoundry video. Times are UTC.
 | 2026-11-09 14:45 | YF-4 technique rules built (no visible change; core) | [PR #15](https://github.com/StitchFoundry/Yarnfoundry/pull/15) | |
 | 2026-11-09 14:38 | PR #14 (YF-3) CI green, squash-merged | [#14](https://github.com/StitchFoundry/Yarnfoundry/pull/14) | |
 | 2026-11-09 14:40 | PR #15 (YF-4) opened | [#15](https://github.com/StitchFoundry/Yarnfoundry/pull/15) | |
+| 2026-11-09 14:48 | YF-5 written instructions built (CLI prints rows; no new screenshot) | PR pending | |
