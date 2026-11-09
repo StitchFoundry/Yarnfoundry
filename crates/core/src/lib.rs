@@ -5,6 +5,8 @@ pub mod color;
 pub mod file;
 pub mod gauge;
 pub mod instructions;
+pub mod mesh;
+pub mod models;
 pub mod picture;
 pub mod setup;
 pub mod technique;
@@ -14,6 +16,7 @@ pub use chart::{Chart, ChartError, Construction, Craft, PaletteColor, Technique}
 pub use file::{FileError, from_json, to_json};
 pub use gauge::{Gauge, GaugeError, Unit};
 pub use instructions::{ColourTotal, Instructions, RowInstruction, Side, colour_label, instructions};
+pub use mesh::{Axis, Mesh, MeshError, MeshReport, import as import_model};
 pub use picture::{PaletteSpec, Picture, PictureError, PictureOptions, chart_from_picture, rows_for_width};
 pub use setup::{Colours, Setup, SetupError, Size, Source, YarnWeight, presets, techniques_for};
 pub use technique::{Float, TechniqueOptions, TechniqueReport, apply as apply_technique, filet_stitches};
