@@ -16,15 +16,34 @@ mod page {
     struct Host {
         app: YarnFoundryApp,
         inbox: Inbox,
+        /// A 3D model the user chose (name, bytes), waiting for the next frame.
+        model_inbox: ModelInbox,
     }
+
+    type ModelInbox = Rc<RefCell<Option<(String, Vec<u8>)>>>;
 
     impl eframe::App for Host {
         fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
             if let Some(bytes) = self.inbox.borrow_mut().take() {
                 self.app.use_picture_bytes(&bytes);
             }
+            if let Some((name, bytes)) = self.model_inbox.borrow_mut().take() {
+                self.app.use_model_bytes(&name, &bytes);
+            }
             self.app.ui(ui);
             let ctx = ui.ctx().clone();
+            if self.app.take_load_model().is_some() {
+                if let Err(e) = choose_model(self.model_inbox.clone(), ctx.clone()) {
+                    self.app.set_message(format!("Could not open the file chooser: {e:?}"));
+                }
+            }
+            if let Some((name, bytes)) = self.app.take_figure_pdf() {
+                let message = match download(&name, "application/pdf", &bytes) {
+                    Ok(()) => format!("Downloaded {name}"),
+                    Err(e) => format!("Could not save: {e:?}"),
+                };
+                self.app.set_message(message);
+            }
             if self.app.take_load_picture().is_some() {
                 if let Err(e) = choose_picture(self.inbox.clone(), ctx) {
                     self.app.set_message(format!("Could not open the file chooser: {e:?}"));
@@ -103,6 +122,30 @@ mod page {
         Ok(())
     }
 
+    /// Opens the browser's file chooser for an STL or OBJ model; the name and bytes arrive in `inbox`.
+    fn choose_model(inbox: ModelInbox, ctx: egui::Context) -> Result<(), JsValue> {
+        let document = web_sys::window().and_then(|w| w.document()).ok_or_else(|| JsValue::from_str("no document"))?;
+        let input: web_sys::HtmlInputElement = document.create_element("input")?.dyn_into()?;
+        input.set_type("file");
+        input.set_accept(".stl,.obj");
+        let on_change = {
+            let input = input.clone();
+            Closure::once_into_js(move || {
+                let Some(file) = input.files().and_then(|f| f.get(0)) else { return };
+                let name = file.name();
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Ok(buffer) = wasm_bindgen_futures::JsFuture::from(file.array_buffer()).await {
+                        *inbox.borrow_mut() = Some((name, js_sys::Uint8Array::new(&buffer).to_vec()));
+                        ctx.request_repaint();
+                    }
+                });
+            })
+        };
+        input.set_onchange(Some(on_change.unchecked_ref()));
+        input.click();
+        Ok(())
+    }
+
     /// Starts the app on the canvas with this id.
     #[wasm_bindgen]
     pub async fn start(canvas_id: &str) -> Result<(), JsValue> {
@@ -112,7 +155,11 @@ mod page {
         let mut app = YarnFoundryApp::new();
         app.set_can_read_paths(false);
         eframe::WebRunner::new()
-            .start(canvas, eframe::WebOptions::default(), Box::new(move |_cc| Ok(Box::new(Host { app, inbox: Rc::new(RefCell::new(None)) }))))
+            .start(
+                canvas,
+                eframe::WebOptions::default(),
+                Box::new(move |_cc| Ok(Box::new(Host { app, inbox: Rc::new(RefCell::new(None)), model_inbox: Rc::new(RefCell::new(None)) }))),
+            )
             .await
     }
 }

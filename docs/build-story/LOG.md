@@ -34,3 +34,6 @@ Making-of log for the YarnFoundry video. Times are UTC.
 | 2026-11-09 17:56 | Snowman split into parts: body (27 rounds, red) and head (16 rounds, blue), rounds drawn as rings with every 5th lighter, assembly note | PR for #26 (YF-14) | docs/build-story/20261109-1756-issue-26.png |
 | 2026-11-09 18:04 | 3D preview in the app, sphere: the original ball beside the crocheted rings (every 5th round lighter) | PR for #27 (YF-15) | docs/build-story/20261109-1804-issue-27-sphere.png |
 | 2026-11-09 18:04 | 3D preview in the app, snowman: original beside the crocheted result coloured by part (body red 27 rounds, head blue 16 rounds) | PR for #27 (YF-15) | docs/build-story/20261109-1804-issue-27-snowman.png |
+| 2026-11-09 18:08 | The 3D figure wizard, step 3 of 5 (Parts): the sample bear splits into 8 parts with neck cut switch and an add-a-cut tool | PR for #28 (YF-16) | docs/build-story/20261109-1808-issue-28-wizard-parts.png |
+| 2026-11-09 18:08 | The sample bear's printable pattern, cover page (preview render, rounds, stitches, yarn estimate, footer) | PR for #28 (YF-16) | docs/build-story/20261109-1808-issue-28-bear-cover.png |
+| 2026-11-09 18:08 | The sample bear's printable pattern, assembly page (numbered parts diagram and sewing notes) | PR for #28 (YF-16) | docs/build-story/20261109-1808-issue-28-bear-assembly.png |

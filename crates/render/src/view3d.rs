@@ -127,6 +127,12 @@ impl Projector {
     }
 }
 
+/// Where a model point lands on screen.
+pub fn project(cam: &Camera, fit: &Fit, frame: Frame, p: [f64; 3]) -> (f32, f32) {
+    let pr = Projector::new(cam, fit, frame);
+    pr.screen(pr.view(p))
+}
+
 /// Most triangles drawn at once; very big models are drawn with every few-th triangle skipped.
 pub const MAX_DRAWN_TRIANGLES: usize = 60_000;
 

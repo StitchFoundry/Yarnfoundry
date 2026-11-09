@@ -6,6 +6,7 @@
 //! Stitch numbers count from the right edge, rows from the bottom. On flat work, right-side (odd) rows read right to left
 //! and have their number on the right; wrong-side (even) rows read left to right and have it on the left. Rounds: always right.
 
+pub mod booklet;
 pub mod draw;
 pub mod pdf;
 pub mod png;
