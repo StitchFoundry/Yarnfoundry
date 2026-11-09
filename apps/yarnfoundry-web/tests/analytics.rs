@@ -10,7 +10,7 @@ const INDEX: &str = include_str!("../index.html");
 fn snippet(token: &str) -> String {
     let start = INDEX.find("(function () {").expect("analytics snippet present");
     let end = INDEX[start..].find("})();").expect("snippet end") + start + "})();".len();
-    INDEX[start..end].replacen("var token = \"YF_CF_TOKEN\";", &format!("var token = \"{token}\";"), 1)
+    INDEX[start..end].replacen("var token = \"5dfe32d5e06244b8830ef5bf312e4d18\";", &format!("var token = \"{token}\";"), 1)
 }
 
 fn added_tags(token: &str) -> Option<String> {
@@ -25,7 +25,7 @@ fn added_tags(token: &str) -> Option<String> {
 
 #[test]
 fn the_token_lives_in_one_place_and_the_page_has_no_literal_beacon_tag() {
-    assert_eq!(INDEX.matches("var token = \"YF_CF_TOKEN\";").count(), 1);
+    assert_eq!(INDEX.matches("var token = \"5dfe32d5e06244b8830ef5bf312e4d18\";").count(), 1);
     assert!(!INDEX.contains("<script defer"), "the beacon tag is only ever added by the snippet");
     assert!(INDEX.contains("https://static.cloudflareinsights.com/beacon.min.js"));
 }
