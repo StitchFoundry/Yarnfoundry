@@ -11,3 +11,4 @@ Making-of log for the YarnFoundry video. Times are UTC.
 | 2026-11-09 14:31 | First chart from a picture (sunset sample, 60 sts x 56 rows, 5 colours) | [PR #13](https://github.com/StitchFoundry/Yarnfoundry/pull/13) | docs/build-story/20261109-1431-issue-3.png |
 | 2026-11-09 14:31 | PR #12 (YF-1) CI green, squash-merged | [#12](https://github.com/StitchFoundry/Yarnfoundry/pull/12) | |
 | 2026-11-09 14:33 | PR #13 (YF-2) opened | [#13](https://github.com/StitchFoundry/Yarnfoundry/pull/13) | |
+| 2026-11-09 14:34 | First words-to-chart: KING CASHEW on a scarf (120 sts x 16 rows) | PR pending | docs/build-story/20261109-1434-issue-4.png |

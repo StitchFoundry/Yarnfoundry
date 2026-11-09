@@ -5,11 +5,13 @@ pub mod color;
 pub mod file;
 pub mod gauge;
 pub mod picture;
+pub mod text;
 
 pub use chart::{Chart, ChartError, Construction, Craft, PaletteColor, Technique};
 pub use file::{FileError, from_json, to_json};
 pub use gauge::{Gauge, GaugeError, Unit};
 pub use picture::{PaletteSpec, Picture, PictureError, PictureOptions, chart_from_picture, rows_for_width};
+pub use text::{TextError, TextOptions, chart_from_text, text_to_mask};
 
 /// The product name shown in window titles and the CLI.
 pub const APP_NAME: &str = "YarnFoundry";
