@@ -17,6 +17,15 @@ pub const CELL: f32 = 20.0;
 #[derive(Default)]
 pub struct YarnFoundryApp {
     chart: Option<yarnfoundry_core::Chart>,
+    export: Option<PrintRequest>,
+    message: String,
+}
+
+/// A print the user asked for; the host app does the file writing (this crate does no I/O).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PrintRequest {
+    pub paper: yarnfoundry_render::Paper,
+    pub look: yarnfoundry_render::Look,
 }
 
 impl YarnFoundryApp {
@@ -26,7 +35,22 @@ impl YarnFoundryApp {
 
     /// An app showing `chart`.
     pub fn with_chart(chart: yarnfoundry_core::Chart) -> Self {
-        Self { chart: Some(chart) }
+        Self { chart: Some(chart), ..Self::default() }
+    }
+
+    /// The print the user asked for since the last call, if any.
+    pub fn take_print_request(&mut self) -> Option<PrintRequest> {
+        self.export.take()
+    }
+
+    /// The chart on screen.
+    pub fn chart(&self) -> Option<&yarnfoundry_core::Chart> {
+        self.chart.as_ref()
+    }
+
+    /// Shows a line of feedback (for example where a file was saved).
+    pub fn set_message(&mut self, message: String) {
+        self.message = message;
     }
 
     /// Draws one frame.
@@ -51,6 +75,28 @@ impl YarnFoundryApp {
                 }
             });
         });
+        if let Some(chart) = &self.chart {
+            egui::Panel::right("legend").default_size(230.0).show(ui, |ui| {
+                ui.heading("Colours");
+                legend(ui, chart);
+                ui.separator();
+                ui.label("Printable chart (true size):");
+                use yarnfoundry_render::{Look, Paper};
+                for (label, paper, look) in [
+                    ("Save PDF, Letter, colour", Paper::Letter, Look::Colour),
+                    ("Save PDF, A4, colour", Paper::A4, Look::Colour),
+                    ("Save PDF, Letter, black and white symbols", Paper::Letter, Look::BlackWhite),
+                    ("Save PDF, A4, black and white symbols", Paper::A4, Look::BlackWhite),
+                ] {
+                    if ui.button(label).clicked() {
+                        self.export = Some(PrintRequest { paper, look });
+                    }
+                }
+                if !self.message.is_empty() {
+                    ui.label(&self.message);
+                }
+            });
+        }
         egui::CentralPanel::default().frame(egui::Frame::new().fill(theme::CANVAS_BG)).show(ui, |ui| {
             let rect = ui.available_rect_before_wrap();
             match &self.chart {
@@ -70,17 +116,40 @@ impl YarnFoundryApp {
     }
 }
 
+/// Colour swatches with their names and stitch counts.
+fn legend(ui: &mut egui::Ui, chart: &yarnfoundry_core::Chart) {
+    let mut counts = vec![0u32; chart.palette.len()];
+    for &c in &chart.cells {
+        if let Some(n) = counts.get_mut(usize::from(c)) {
+            *n += 1;
+        }
+    }
+    egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
+        for (colour, count) in chart.palette.iter().zip(&counts) {
+            ui.horizontal(|ui| {
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
+                ui.painter().rect_filled(rect, 2.0, egui::Color32::from_rgb(colour.rgb[0], colour.rgb[1], colour.rgb[2]));
+                ui.label(format!("{} ({count})", colour.name));
+            });
+        }
+    });
+}
+
 /// Paints `chart` scaled to fit `rect` (row 0, the first row worked, at the bottom), with a stronger line every 10 stitches/rows.
 pub fn paint_chart(painter: &egui::Painter, rect: egui::Rect, chart: &yarnfoundry_core::Chart) {
     let margin = 16.0;
-    let avail = rect.shrink(margin);
+    let gutter = 28.0; // room for the row numbers on both sides and the stitch numbers below
+    let avail = egui::Rect::from_min_max(
+        egui::pos2(rect.left() + margin + gutter, rect.top() + margin),
+        egui::pos2(rect.right() - margin - gutter, rect.bottom() - margin - 14.0),
+    );
     // A stitch is wider than it is tall (rows per inch > stitches per inch), so draw cells in that proportion.
     let aspect = chart.gauge.stitch_aspect() as f32;
     let aspect = if aspect.is_finite() && aspect > 0.0 { aspect } else { 1.0 };
     let cell = (avail.width() / chart.width as f32).min(avail.height() * aspect / chart.height as f32).max(1.0);
     let cell_h = cell / aspect;
     let size = egui::vec2(cell * chart.width as f32, cell_h * chart.height as f32);
-    let origin = egui::pos2(rect.center().x - size.x / 2.0, rect.center().y - size.y / 2.0);
+    let origin = egui::pos2(avail.center().x - size.x / 2.0, avail.center().y - size.y / 2.0);
     for y in 0..chart.height {
         for x in 0..chart.width {
             let Some(c) = chart.get(x, y).and_then(|i| chart.palette.get(usize::from(i))) else { continue };
@@ -101,6 +170,47 @@ pub fn paint_chart(painter: &egui::Painter, rect: egui::Rect, chart: &yarnfoundr
         // count rows from the bottom so the heavy lines match the row numbers
         let py = origin.y + size.y - y as f32 * cell_h;
         line(egui::pos2(origin.x, py), egui::pos2(origin.x + size.x, py), y % 10 == 0);
+    }
+    // Row numbers on the side each row is worked from (odd right-side rows on the right; rounds always on the right),
+    // stitch numbers from the right edge under the chart. Thin out the numbers when cells get small.
+    let step = if cell_h >= 9.0 {
+        1
+    } else if cell_h >= 4.5 {
+        2
+    } else {
+        5
+    };
+    let font = egui::FontId::proportional(cell_h.clamp(7.0, 11.0));
+    for y in 0..chart.height {
+        if (y + 1) % step != 0 && y != 0 {
+            continue;
+        }
+        let py = origin.y + size.y - (y as f32 + 0.5) * cell_h;
+        let label = (y + 1).to_string();
+        if yarnfoundry_render::row_number_on_right(chart, y) {
+            painter.text(egui::pos2(origin.x + size.x + 4.0, py), egui::Align2::LEFT_CENTER, label, font.clone(), theme::HINT);
+        } else {
+            painter.text(egui::pos2(origin.x - 4.0, py), egui::Align2::RIGHT_CENTER, label, font.clone(), theme::HINT);
+        }
+    }
+    let cstep = if cell >= 14.0 {
+        1
+    } else if cell >= 5.0 {
+        5
+    } else {
+        10
+    };
+    for n in 1..=chart.width {
+        if n == 1 || n % 10 == 0 || (cstep < 10 && n % cstep == 0) {
+            let px = origin.x + size.x - (n as f32 - 0.5) * cell;
+            painter.text(
+                egui::pos2(px, origin.y + size.y + 3.0),
+                egui::Align2::CENTER_TOP,
+                n.to_string(),
+                egui::FontId::proportional(9.0),
+                theme::HINT,
+            );
+        }
     }
 }
 

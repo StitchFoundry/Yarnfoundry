@@ -15,7 +15,7 @@ pub use gauge::{Gauge, GaugeError, Unit};
 pub use instructions::{ColourTotal, Instructions, RowInstruction, Side, colour_label, instructions};
 pub use picture::{PaletteSpec, Picture, PictureError, PictureOptions, chart_from_picture, rows_for_width};
 pub use technique::{Float, TechniqueOptions, TechniqueReport, apply as apply_technique, filet_stitches};
-pub use text::{TextError, TextOptions, chart_from_text, text_to_mask};
+pub use text::{DEFAULT_MIN_ROWS, TextError, TextOptions, TextWeight, chart_from_text, text_to_mask};
 
 /// The product name shown in window titles and the CLI.
 pub const APP_NAME: &str = "YarnFoundry";
