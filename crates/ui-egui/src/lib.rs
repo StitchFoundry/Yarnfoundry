@@ -41,6 +41,8 @@ pub struct YarnFoundryApp {
     can_read_paths: bool,
     /// The 3D figure wizard, when it is open (instead of the chart setup).
     wizard: Option<figure_wizard::FigureWizard>,
+    /// The "Feedback / report a problem" panel is showing.
+    feedback_open: bool,
 }
 
 impl Default for YarnFoundryApp {
@@ -58,6 +60,15 @@ pub struct PrintRequest {
 
 /// The sample picture offered in step 2, so a new user can try the app without any file (also in the browser).
 static SAMPLE_PICTURE: &[u8] = include_bytes!("../../../assets/samples/sunset-hills.png");
+
+/// Where feedback goes for now (until the web form ships).
+pub const FEEDBACK_EMAIL: &str = "hello@sitesentrix.com";
+pub const FEEDBACK_FACEBOOK: &str = "https://www.facebook.com/stitchfoundryapp";
+
+/// A `mailto:` link with the subject and the app version prefilled. A convenience only: the address is also shown to copy.
+pub fn feedback_mailto(version: &str) -> String {
+    format!("mailto:{FEEDBACK_EMAIL}?subject=%5BYarnFoundry%5D%20Feedback&body=App%20version%3A%20{version}%0A%0A")
+}
 
 pub const STEP_TITLES: [&str; yarnfoundry_core::setup::STEPS] =
     ["What are you making?", "Picture or words?", "Size and gauge", "Colours", "Preview, print, save"];
@@ -83,6 +94,7 @@ impl YarnFoundryApp {
             load_picture: None,
             can_read_paths: true,
             wizard: None,
+            feedback_open: false,
         }
     }
 
@@ -262,6 +274,9 @@ impl YarnFoundryApp {
             ui.horizontal(|ui| {
                 ui.heading(yarnfoundry_core::APP_NAME);
                 ui.label(format!("v{}", yarnfoundry_core::VERSION));
+                if ui.button("Feedback / report a problem").clicked() {
+                    self.feedback_open = !self.feedback_open;
+                }
                 ui.separator();
                 let step = self.step.clamp(1, yarnfoundry_core::setup::STEPS);
                 if self.wizard.is_some() {
@@ -294,6 +309,29 @@ impl YarnFoundryApp {
         } else {
             self.setup_ui(ui);
         }
+        self.feedback_ui(ui.ctx());
+    }
+
+    /// The small feedback panel: plain wording, the address to copy, and the app version.
+    fn feedback_ui(&mut self, ctx: &egui::Context) {
+        if !self.feedback_open {
+            return;
+        }
+        let mut open = true;
+        egui::Window::new("Feedback / report a problem").open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
+            ui.label("Tell us what's wrong or what you'd like.");
+            ui.label(format!("Email {FEEDBACK_EMAIL}"));
+            ui.horizontal(|ui| {
+                if ui.button("Copy address").clicked() {
+                    ui.ctx().copy_text(FEEDBACK_EMAIL.to_string());
+                }
+                ui.hyperlink_to("Open email", feedback_mailto(yarnfoundry_core::VERSION));
+            });
+            ui.label("or message us on Facebook:");
+            ui.hyperlink(FEEDBACK_FACEBOOK);
+            ui.label(egui::RichText::new(format!("YarnFoundry version {}", yarnfoundry_core::VERSION)).color(theme::HINT));
+        });
+        self.feedback_open = open;
     }
 
     fn nav_ui(&mut self, ui: &mut egui::Ui) {
@@ -554,6 +592,9 @@ impl YarnFoundryApp {
                     self.restart();
                 }
             });
+            if ui.button("Feedback / report a problem").clicked() {
+                self.feedback_open = true;
+            }
             ui.heading("Colours");
             legend(ui, &chart);
             if let Some(report) = &self.report {
@@ -739,6 +780,51 @@ mod tests {
         let mut out = ctx.run_ui(egui::RawInput::default(), |ui| app.ui(ui));
         out.textures_delta.clear();
         assert!(out.shapes.len() > 12 * 8, "{} shapes", out.shapes.len());
+    }
+
+    /// Runs one frame and returns all the text it drew.
+    fn frame_text(ctx: &egui::Context, app: &mut YarnFoundryApp) -> String {
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| app.ui(ui));
+        out.textures_delta.clear();
+        let mut text = String::new();
+        for clipped in &out.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                text.push_str(t.galley.text());
+                text.push('\n');
+            }
+        }
+        text
+    }
+
+    #[test]
+    fn the_feedback_panel_renders_with_the_version_and_both_ways_to_reach_us() {
+        let ctx = egui::Context::default();
+        let mut app = YarnFoundryApp::new();
+        let closed = frame_text(&ctx, &mut app);
+        assert!(closed.contains("Feedback / report a problem"), "button is in the top bar");
+        assert!(!closed.contains(FEEDBACK_EMAIL));
+        app.feedback_open = true;
+        // A window is sized on its first frame and drawn on the next.
+        frame_text(&ctx, &mut app);
+        let text = frame_text(&ctx, &mut app);
+        assert!(text.contains(FEEDBACK_EMAIL), "{text}");
+        assert!(text.contains("Copy address") && text.contains("Open email"), "{text}");
+        assert!(text.contains(FEEDBACK_FACEBOOK), "{text}");
+        assert!(text.contains(&format!("YarnFoundry version {}", yarnfoundry_core::VERSION)), "{text}");
+    }
+
+    #[test]
+    fn the_mailto_link_has_the_subject_and_version() {
+        let link = feedback_mailto("1.2.3");
+        assert!(link.starts_with("mailto:hello@sitesentrix.com?subject=%5BYarnFoundry%5D%20Feedback"));
+        assert!(link.contains("App%20version%3A%201.2.3"));
+    }
+
+    #[test]
+    fn the_feedback_button_is_on_the_preview_screen_too() {
+        let mut app = YarnFoundryApp::demo_at_step(5);
+        let text = frame_text(&egui::Context::default(), &mut app);
+        assert_eq!(text.matches("Feedback / report a problem").count(), 2, "top bar and step 5 panel");
     }
 
     mod wizard {
