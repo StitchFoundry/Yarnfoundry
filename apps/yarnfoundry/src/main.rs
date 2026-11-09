@@ -15,6 +15,20 @@ struct Host {
 impl eframe::App for Host {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.app.ui(ui);
+        if let Some(path) = self.app.take_load_picture() {
+            match std::fs::read(&path) {
+                Ok(bytes) => self.app.use_picture_bytes(&bytes),
+                Err(e) => self.app.set_message(format!("{path}: {e}")),
+            }
+        }
+        if self.app.take_save_project() {
+            let message = match self.app.chart().map(|chart| save_project(chart, &self.stem)) {
+                Some(Ok(path)) => format!("Saved {path}"),
+                Some(Err(e)) => format!("Could not save: {e}"),
+                None => String::new(),
+            };
+            self.app.set_message(message);
+        }
         if let Some(req) = self.app.take_print_request() {
             let message = match self.app.chart().map(|chart| save_pdf(chart, &self.stem, req)) {
                 Some(Ok(path)) => format!("Saved {path}"),
@@ -35,13 +49,24 @@ fn save_pdf(chart: &Chart, stem: &str, req: yarnfoundry_ui_egui::PrintRequest) -
     Ok(name)
 }
 
+/// Writes the project file next to where the app was started; returns the file name.
+fn save_project(chart: &Chart, stem: &str) -> Result<String, String> {
+    let name = format!("{stem}.yarnfoundry");
+    std::fs::write(&name, yarnfoundry_core::to_json(chart).map_err(|e| e.to_string())?).map_err(|e| format!("{name}: {e}"))?;
+    Ok(name)
+}
+
 fn main() -> eframe::Result {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
-    let stem = std::env::args()
-        .nth(1)
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    // `--step N` starts the setup at step N with the demo words filled in (for screenshots).
+    let demo_step = args.iter().position(|a| a == "--step").and_then(|i| args.get(i + 1)).and_then(|v| v.parse::<usize>().ok());
+    let file = args.first().filter(|a| !a.starts_with("--")).cloned();
+    let stem = file
+        .clone()
         .and_then(|p| Path::new(&p).file_stem().map(|s| s.to_string_lossy().into_owned()))
         .unwrap_or_else(|| "yarnfoundry-chart".to_string());
-    let chart = std::env::args().nth(1).and_then(|path| match open(Path::new(&path)) {
+    let chart = file.and_then(|path| match open(Path::new(&path)) {
         Ok(chart) => Some(chart),
         Err(e) => {
             log::error!("could not open {path}: {e}");
@@ -58,7 +83,12 @@ fn main() -> eframe::Result {
     eframe::run_native(
         yarnfoundry_core::APP_NAME,
         options,
-        Box::new(move |_cc| Ok(Box::new(Host { app: chart.map_or_else(YarnFoundryApp::new, YarnFoundryApp::with_chart), stem }))),
+        Box::new(move |_cc| {
+            Ok(Box::new(Host {
+                app: demo_step.map_or_else(|| chart.map_or_else(YarnFoundryApp::new, YarnFoundryApp::with_chart), YarnFoundryApp::demo_at_step),
+                stem,
+            }))
+        }),
     )
 }
 
