@@ -15,6 +15,10 @@ yarnfoundry --screenshot out.png [--project f.yarnfoundry]   # draw the window, 
 
 The browser version is built and published by the Pages workflow. Draft notes for the first release: [RELEASE-NOTES.md](RELEASE-NOTES.md).
 
+## Privacy
+
+The web version counts page views with Cloudflare Web Analytics: cookieless, page-view counts only, no personal data. There are no accounts, and nothing you make (pictures, charts, projects) leaves your computer. To report a problem or ask for something, use the Feedback button in the app.
+
 ## License
 
 Licensed under either of

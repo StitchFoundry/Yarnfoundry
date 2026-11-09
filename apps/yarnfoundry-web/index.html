@@ -16,6 +16,20 @@
 <body>
   <div id="loading">Loading YarnFoundry...</div>
   <canvas id="yarnfoundry"></canvas>
+  <!-- Web analytics: Cloudflare Web Analytics, cookieless, page-view counts only, no personal data.
+       THE ONE PLACE FOR THE TOKEN: replace YF_CF_TOKEN on the next line with the site token from Cloudflare.
+       While it is still the literal YF_CF_TOKEN, no beacon script tag is added and no request is made. -->
+  <script>
+    (function () {
+      var token = "5dfe32d5e06244b8830ef5bf312e4d18";
+      if (token === "YF_CF_" + "TOKEN" || token === "") return;
+      var s = document.createElement("script");
+      s.defer = true;
+      s.src = "https://static.cloudflareinsights.com/beacon.min.js";
+      s.setAttribute("data-cf-beacon", JSON.stringify({ token: token }));
+      document.head.appendChild(s);
+    })();
+  </script>
   <script type="module">
     import init, { start } from "./pkg/yarnfoundry_web.js";
     await init();
