@@ -1,6 +1,6 @@
 # Status
 
-- Last task: YF-0 scaffold (issue #1), branch claude/issue-1.
-- In progress: PR for #1.
-- Next: YF-1 (#2) chart model, gauge, file format.
+- Last task: YF-0 scaffold, merged (PR #11).
+- In progress: YF-1 (#2) chart model, gauge, file format, branch claude/issue-2.
+- Next: YF-2 (#3) picture to chart.
 - Blockers: none.
