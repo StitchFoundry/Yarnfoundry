@@ -1,0 +1,49 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "apps/*", "xtask"]
+default-members = ["crates/*", "apps/yarnfoundry-cli", "xtask"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.95"
+repository = "https://github.com/StitchFoundry/Yarnfoundry"
+
+[workspace.dependencies]
+# internal
+yarnfoundry-core = { path = "crates/core" }
+yarnfoundry-render = { path = "crates/render" }
+yarnfoundry-ui-egui = { path = "crates/ui-egui" }
+
+# foundation
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+thiserror = "2"
+log = "0.4"
+proptest = "1"
+eframe = { version = "0.37", default-features = false }
+egui = "0.37"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+# YarnFoundry never crashes: shipped code returns `Result`/`Option` instead of panicking. Tests may unwrap (clippy.toml).
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
