@@ -13,12 +13,33 @@ pub mod theme {
 /// Side length of one empty-canvas grid cell, in points.
 pub const CELL: f32 = 20.0;
 
-/// The application state shown in the window.
-#[derive(Default)]
+/// The application state shown in the window: the five-step setup, ending in the chart preview (step 5).
 pub struct YarnFoundryApp {
+    /// 1 to 4 are setup pages; 5 is the preview of `chart`.
+    step: usize,
+    setup: yarnfoundry_core::Setup,
+    words: String,
+    /// Step 2: words (true) or a picture (false).
+    words_mode: bool,
+    /// The last picture chosen, kept when switching to words and back.
+    picture: Option<yarnfoundry_core::Picture>,
     chart: Option<yarnfoundry_core::Chart>,
-    export: Option<PrintRequest>,
+    report: Option<yarnfoundry_core::TechniqueReport>,
+    /// The chart came from a file, so there is no setup to go back to.
+    opened_from_file: bool,
+    picture_path: String,
+    width_text: f64,
+    error: String,
     message: String,
+    export: Option<PrintRequest>,
+    save_project: bool,
+    load_picture: Option<String>,
+}
+
+impl Default for YarnFoundryApp {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// A print the user asked for; the host app does the file writing (this crate does no I/O).
@@ -28,19 +49,153 @@ pub struct PrintRequest {
     pub look: yarnfoundry_render::Look,
 }
 
+/// The sample picture offered in step 2, so a new user can try the app without any file (also in the browser).
+static SAMPLE_PICTURE: &[u8] = include_bytes!("../../../assets/samples/sunset-hills.png");
+
+pub const STEP_TITLES: [&str; yarnfoundry_core::setup::STEPS] =
+    ["What are you making?", "Picture or words?", "Size and gauge", "Colours", "Preview, print, save"];
+
 impl YarnFoundryApp {
+    /// The setup, starting at step 1.
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            step: 1,
+            setup: yarnfoundry_core::Setup::default(),
+            words: String::new(),
+            words_mode: true,
+            picture: None,
+            chart: None,
+            report: None,
+            opened_from_file: false,
+            picture_path: String::new(),
+            width_text: 8.0,
+            error: String::new(),
+            message: String::new(),
+            export: None,
+            save_project: false,
+            load_picture: None,
+        }
     }
 
-    /// An app showing `chart`.
+    /// An app showing `chart` (opened from a file).
     pub fn with_chart(chart: yarnfoundry_core::Chart) -> Self {
-        Self { chart: Some(chart), ..Self::default() }
+        Self { step: yarnfoundry_core::setup::STEPS, chart: Some(chart), opened_from_file: true, ..Self::new() }
+    }
+
+    /// The setup at `step` with the words KING CASHEW filled in (for screenshots and demos). Step 5 builds the chart.
+    pub fn demo_at_step(step: usize) -> Self {
+        use yarnfoundry_core::{Colours, Size, Source};
+        let mut app = Self::new();
+        app.words = "KING CASHEW".to_string();
+        app.setup.source = Some(Source::Words(app.words.clone()));
+        app.setup.size = Size::Stitches(180);
+        app.setup.colours = Colours::Preset { preset: 0, picked: vec![3, 4] };
+        app.step = step.clamp(1, yarnfoundry_core::setup::STEPS);
+        if app.step == yarnfoundry_core::setup::STEPS {
+            app.build_preview();
+        }
+        app
+    }
+
+    pub fn step(&self) -> usize {
+        self.step
+    }
+
+    pub fn setup_mut(&mut self) -> &mut yarnfoundry_core::Setup {
+        &mut self.setup
+    }
+
+    pub fn error(&self) -> &str {
+        &self.error
+    }
+
+    /// Goes to the next step if this one is complete; at step 4 the chart is built. Returns whether it moved.
+    pub fn go_next(&mut self) -> bool {
+        if self.step >= yarnfoundry_core::setup::STEPS {
+            return false;
+        }
+        if self.step == 2 {
+            self.apply_source();
+        }
+        if let Err(e) = self.setup.check_step(self.step) {
+            self.error = e.to_string();
+            return false;
+        }
+        self.error.clear();
+        self.step += 1;
+        if self.step == yarnfoundry_core::setup::STEPS {
+            self.build_preview();
+            if self.chart.is_none() {
+                self.step -= 1;
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Goes back one step (from a chart opened from a file there is nothing to go back to).
+    pub fn back(&mut self) {
+        if self.step > 1 && !self.opened_from_file {
+            self.step -= 1;
+            self.error.clear();
+        }
+    }
+
+    /// Starts a new chart from step 1.
+    pub fn restart(&mut self) {
+        *self = Self::new();
+    }
+
+    /// Puts the step-2 choice into the setup.
+    fn apply_source(&mut self) {
+        self.setup.source = if self.words_mode {
+            Some(yarnfoundry_core::Source::Words(self.words.clone()))
+        } else {
+            self.picture.clone().map(yarnfoundry_core::Source::Picture)
+        };
+    }
+
+    fn build_preview(&mut self) {
+        match self.setup.build() {
+            Ok((chart, report)) => {
+                self.chart = Some(chart);
+                self.report = Some(report);
+                self.error.clear();
+            }
+            Err(e) => {
+                self.chart = None;
+                self.report = None;
+                self.error = e.to_string();
+            }
+        }
+    }
+
+    /// Uses `bytes` (a PNG, JPEG or WebP file) as the picture.
+    pub fn use_picture_bytes(&mut self, bytes: &[u8]) {
+        match yarnfoundry_core::Picture::decode(bytes) {
+            Ok(pic) => {
+                self.picture = Some(pic);
+                self.words_mode = false;
+                self.apply_source();
+                self.error.clear();
+            }
+            Err(e) => self.error = e.to_string(),
+        }
     }
 
     /// The print the user asked for since the last call, if any.
     pub fn take_print_request(&mut self) -> Option<PrintRequest> {
         self.export.take()
+    }
+
+    /// Whether the user asked to save the project file since the last call.
+    pub fn take_save_project(&mut self) -> bool {
+        std::mem::take(&mut self.save_project)
+    }
+
+    /// A picture file path the user asked to load since the last call (the host reads it and calls [`Self::use_picture_bytes`]).
+    pub fn take_load_picture(&mut self) -> Option<String> {
+        self.load_picture.take()
     }
 
     /// The chart on screen.
@@ -55,11 +210,15 @@ impl YarnFoundryApp {
 
     /// Draws one frame.
     pub fn ui(&mut self, ui: &mut egui::Ui) {
+        ui.ctx().set_visuals(egui::Visuals::light());
         egui::Panel::top("title").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading(yarnfoundry_core::APP_NAME);
                 ui.label(format!("v{}", yarnfoundry_core::VERSION));
-                if let Some(chart) = &self.chart {
+                ui.separator();
+                let step = self.step.clamp(1, yarnfoundry_core::setup::STEPS);
+                ui.label(egui::RichText::new(format!("Step {step} of {}: {}", yarnfoundry_core::setup::STEPS, STEP_TITLES[step - 1])).strong());
+                if let (5, Some(chart)) = (self.step, &self.chart) {
                     let (w, h) = chart.finished_size();
                     let unit = if chart.gauge.unit == yarnfoundry_core::Unit::Cm { "cm" } else { "in" };
                     ui.separator();
@@ -75,43 +234,302 @@ impl YarnFoundryApp {
                 }
             });
         });
-        if let Some(chart) = &self.chart {
-            egui::Panel::right("legend").default_size(230.0).show(ui, |ui| {
-                ui.heading("Colours");
-                legend(ui, chart);
-                ui.separator();
-                ui.label("Printable chart (true size):");
-                use yarnfoundry_render::{Look, Paper};
-                for (label, paper, look) in [
-                    ("Save PDF, Letter, colour", Paper::Letter, Look::Colour),
-                    ("Save PDF, A4, colour", Paper::A4, Look::Colour),
-                    ("Save PDF, Letter, black and white symbols", Paper::Letter, Look::BlackWhite),
-                    ("Save PDF, A4, black and white symbols", Paper::A4, Look::BlackWhite),
-                ] {
-                    if ui.button(label).clicked() {
-                        self.export = Some(PrintRequest { paper, look });
-                    }
-                }
-                if !self.message.is_empty() {
-                    ui.label(&self.message);
+        if self.step == yarnfoundry_core::setup::STEPS && self.chart.is_some() {
+            self.preview_ui(ui);
+        } else {
+            self.setup_ui(ui);
+        }
+    }
+
+    fn nav_ui(&mut self, ui: &mut egui::Ui) {
+        ui.separator();
+        ui.horizontal(|ui| {
+            if ui.add_enabled(self.step > 1, egui::Button::new("< Back")).clicked() {
+                self.back();
+            }
+            let last_setup = self.step == yarnfoundry_core::setup::STEPS - 1;
+            if ui.button(if last_setup { "Make my chart >" } else { "Next >" }).clicked() {
+                self.go_next();
+            }
+            if !self.error.is_empty() {
+                ui.colored_label(egui::Color32::from_rgb(178, 40, 40), &self.error);
+            }
+        });
+    }
+
+    fn setup_ui(&mut self, ui: &mut egui::Ui) {
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(theme::CANVAS_BG).inner_margin(20.0)).show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 10.0;
+            match self.step {
+                1 => self.step1(ui),
+                2 => self.step2(ui),
+                3 => self.step3(ui),
+                _ => self.step4(ui),
+            }
+            self.nav_ui(ui);
+        });
+    }
+
+    fn step1(&mut self, ui: &mut egui::Ui) {
+        use yarnfoundry_core::{Construction, Craft};
+        ui.label("I want to:");
+        let mut craft = self.setup.craft;
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut craft, Craft::Knit, "Knit");
+            ui.selectable_value(&mut craft, Craft::Crochet, "Crochet");
+        });
+        if craft != self.setup.craft {
+            self.setup.set_craft(craft);
+        }
+        ui.label("Colorwork technique:");
+        ui.horizontal(|ui| {
+            for &t in yarnfoundry_core::techniques_for(self.setup.craft) {
+                ui.selectable_value(&mut self.setup.technique, t, yarnfoundry_core::setup::technique_label(t));
+            }
+        });
+        ui.label(match self.setup.technique {
+            yarnfoundry_core::Technique::Intarsia => "Intarsia: blocks of colour, a separate bobbin for each area.",
+            yarnfoundry_core::Technique::FairIsle => "Fair isle: two colours a row, the unused yarn carried behind.",
+            yarnfoundry_core::Technique::Tapestry => "Tapestry crochet: single crochet, colours carried inside the stitches.",
+            yarnfoundry_core::Technique::Filet => "Filet crochet: filled and open squares, three stitches a square.",
+        });
+        ui.label("Worked:");
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut self.setup.construction, Construction::Flat, "Flat (back and forth)");
+            ui.selectable_value(&mut self.setup.construction, Construction::Round, "In the round");
+        });
+    }
+
+    fn step2(&mut self, ui: &mut egui::Ui) {
+        ui.label("What should the chart show?");
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut self.words_mode, true, "Words");
+            ui.selectable_value(&mut self.words_mode, false, "A picture");
+        });
+        if self.words_mode {
+            ui.label("Type your words (a name, a saying):");
+            ui.add(egui::TextEdit::singleline(&mut self.words).hint_text("KING CASHEW").desired_width(360.0));
+            ui.label("Letters are bold and at least 20 rows tall so they read clearly.");
+        } else {
+            if ui.button("Use the sample picture (sunset over hills)").clicked() {
+                self.use_picture_bytes(SAMPLE_PICTURE);
+            }
+            ui.horizontal(|ui| {
+                ui.label("or a file (PNG, JPEG, WebP):");
+                ui.add(egui::TextEdit::singleline(&mut self.picture_path).hint_text("path to a picture").desired_width(300.0));
+                if ui.button("Load").clicked() && !self.picture_path.trim().is_empty() {
+                    self.load_picture = Some(self.picture_path.trim().to_string());
                 }
             });
+            if let Some(pic) = &self.picture {
+                ui.label(format!("Picture loaded: {} x {} pixels", pic.width, pic.height));
+            }
         }
-        egui::CentralPanel::default().frame(egui::Frame::new().fill(theme::CANVAS_BG)).show(ui, |ui| {
-            let rect = ui.available_rect_before_wrap();
-            match &self.chart {
-                Some(chart) => paint_chart(&ui.painter_at(rect), rect, chart),
-                None => {
-                    paint_empty_grid(&ui.painter_at(rect), rect);
-                    ui.painter().text(
-                        rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        "Your chart will appear here",
-                        egui::FontId::proportional(22.0),
-                        theme::HINT,
-                    );
+        self.apply_source();
+    }
+
+    fn step3(&mut self, ui: &mut egui::Ui) {
+        use yarnfoundry_core::{Size, Unit, YarnWeight};
+        ui.horizontal(|ui| {
+            ui.label("Measure in:");
+            ui.selectable_value(&mut self.setup.unit, Unit::Inches, "inches");
+            ui.selectable_value(&mut self.setup.unit, Unit::Cm, "cm");
+        });
+        let unit = if self.setup.unit == Unit::Cm { "cm" } else { "in" };
+        let mut by_width = matches!(self.setup.size, Size::Width(_));
+        ui.horizontal(|ui| {
+            ui.label("Size by:");
+            ui.selectable_value(&mut by_width, true, "finished width");
+            ui.selectable_value(&mut by_width, false, "stitches across");
+        });
+        match (by_width, self.setup.size) {
+            (true, Size::Width(w)) => {
+                let mut w = w;
+                ui.horizontal(|ui| {
+                    ui.label("Finished width:");
+                    ui.add(egui::DragValue::new(&mut w).range(0.5..=120.0).speed(0.1).suffix(format!(" {unit}")));
+                });
+                self.setup.size = Size::Width(w);
+            }
+            (true, _) => self.setup.size = Size::Width(self.width_text),
+            (false, Size::Stitches(n)) => {
+                let mut n = n;
+                ui.horizontal(|ui| {
+                    ui.label("Stitches across:");
+                    ui.add(egui::DragValue::new(&mut n).range(1..=yarnfoundry_core::setup::MAX_WIDTH));
+                });
+                self.setup.size = Size::Stitches(n);
+            }
+            (false, _) => self.setup.size = Size::Stitches(60),
+        }
+        ui.separator();
+        let mut knows = self.setup.known_gauge.is_some();
+        ui.checkbox(&mut knows, "I know my gauge");
+        if knows && self.setup.known_gauge.is_none() {
+            self.setup.known_gauge = self.setup.gauge().ok();
+        } else if !knows {
+            self.setup.known_gauge = None;
+        }
+        if let Some(g) = &mut self.setup.known_gauge {
+            ui.horizontal(|ui| {
+                ui.add(egui::DragValue::new(&mut g.stitches).range(1.0..=60.0).speed(0.1));
+                ui.label("stitches and");
+                ui.add(egui::DragValue::new(&mut g.rows).range(1.0..=80.0).speed(0.1));
+                ui.label(format!("rows over {} {unit}", g.measure));
+            });
+        } else {
+            ui.horizontal(|ui| {
+                ui.label("I don't know my gauge. My yarn is:");
+                egui::ComboBox::from_id_salt("yarn-weight").selected_text(self.setup.yarn_weight.label()).show_ui(ui, |ui| {
+                    for w in YarnWeight::ALL {
+                        ui.selectable_value(&mut self.setup.yarn_weight, w, w.label());
+                    }
+                });
+            });
+        }
+        if let Ok(g) = self.setup.gauge() {
+            let stitches = self.setup.stitches(&g).map_or_else(|_| "?".to_string(), |n| n.to_string());
+            ui.label(format!("Gauge used: {} stitches and {} rows over {} {unit}. Chart width: {stitches} stitches.", g.stitches, g.rows, g.measure));
+        }
+        if let Size::Width(w) = self.setup.size {
+            self.width_text = w;
+        }
+    }
+
+    fn step4(&mut self, ui: &mut egui::Ui) {
+        use yarnfoundry_core::{Colours, Source};
+        let is_words = matches!(self.setup.source, Some(Source::Words(_)));
+        let all = yarnfoundry_core::presets();
+        let (mut preset, mut picked) = match &self.setup.colours {
+            Colours::Preset { preset, picked } => (*preset, picked.clone()),
+            Colours::FromPicture => (0, vec![0, 1]),
+        };
+        let mut from_picture = matches!(self.setup.colours, Colours::FromPicture);
+        if !is_words {
+            ui.horizontal(|ui| {
+                ui.label("Colours:");
+                ui.selectable_value(&mut from_picture, true, "pick them from my picture");
+                ui.selectable_value(&mut from_picture, false, "choose from a palette");
+            });
+        } else {
+            from_picture = false;
+            if picked.len() != 2 {
+                picked = vec![0, 2];
+            }
+            ui.label("Pick two colours: click one swatch for the background, then another for the letters.");
+        }
+        if from_picture {
+            ui.horizontal(|ui| {
+                ui.label("How many colours?");
+                ui.add(
+                    egui::DragValue::new(&mut self.setup.colour_count)
+                        .range(yarnfoundry_core::setup::MIN_COLOURS..=yarnfoundry_core::setup::MAX_COLOURS),
+                );
+            });
+            self.setup.colours = Colours::FromPicture;
+            return;
+        }
+        ui.horizontal(|ui| {
+            ui.label("Palette:");
+            for (i, p) in all.iter().enumerate() {
+                if ui.selectable_label(preset == i, p.name).clicked() && preset != i {
+                    preset = i;
+                    picked = if is_words { vec![0, 2] } else { vec![0, 1] };
                 }
             }
+        });
+        let colours = all.get(preset).map(|p| p.colours.clone()).unwrap_or_default();
+        ui.horizontal_wrapped(|ui| {
+            for (i, col) in colours.iter().enumerate() {
+                let on = picked.contains(&i);
+                let label = picked.iter().position(|&p| p == i).map_or_else(String::new, |pos| {
+                    if is_words { if pos == 0 { "background".into() } else { "letters".into() } } else { (pos + 1).to_string() }
+                });
+                ui.vertical(|ui| {
+                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(72.0, 44.0), egui::Sense::click());
+                    ui.painter().rect_filled(rect, 6.0, egui::Color32::from_rgb(col.rgb[0], col.rgb[1], col.rgb[2]));
+                    let stroke = if on {
+                        egui::Stroke::new(3.0, egui::Color32::from_rgb(40, 90, 200))
+                    } else {
+                        egui::Stroke::new(1.0, theme::GRID_LINE_MAJOR)
+                    };
+                    ui.painter().rect_stroke(rect, 6.0, stroke, egui::StrokeKind::Inside);
+                    ui.label(format!("{}{}", col.name, if label.is_empty() { String::new() } else { format!(" ({label})") }));
+                    if resp.clicked() {
+                        if is_words {
+                            if on {
+                                picked.retain(|&p| p != i);
+                            } else {
+                                picked.push(i);
+                                if picked.len() > 2 {
+                                    picked.remove(0);
+                                }
+                            }
+                        } else if on {
+                            picked.retain(|&p| p != i);
+                        } else if picked.len() < yarnfoundry_core::setup::MAX_COLOURS {
+                            picked.push(i);
+                        }
+                    }
+                });
+            }
+        });
+        if !is_words {
+            ui.label(format!("{} colours picked (2 to 8).", picked.len()));
+        }
+        self.setup.colours = Colours::Preset { preset, picked };
+    }
+
+    fn preview_ui(&mut self, ui: &mut egui::Ui) {
+        let Some(chart) = self.chart.clone() else { return };
+        egui::Panel::right("legend").default_size(250.0).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                if !self.opened_from_file && ui.button("< Change setup").clicked() {
+                    self.back();
+                }
+                if ui.button("New chart").clicked() {
+                    self.restart();
+                }
+            });
+            ui.heading("Colours");
+            legend(ui, &chart);
+            if let Some(report) = &self.report {
+                for w in report.warnings.iter().take(3) {
+                    ui.colored_label(egui::Color32::from_rgb(160, 90, 10), w);
+                }
+            }
+            ui.separator();
+            ui.label("Print at true size:");
+            use yarnfoundry_render::{Look, Paper};
+            for (label, paper, look) in [
+                ("PDF, Letter, colour", Paper::Letter, Look::Colour),
+                ("PDF, A4, colour", Paper::A4, Look::Colour),
+                ("PDF, Letter, black and white symbols", Paper::Letter, Look::BlackWhite),
+                ("PDF, A4, black and white symbols", Paper::A4, Look::BlackWhite),
+            ] {
+                if ui.button(label).clicked() {
+                    self.export = Some(PrintRequest { paper, look });
+                }
+            }
+            if ui.button("Save project (.yarnfoundry)").clicked() {
+                self.save_project = true;
+            }
+            if !self.message.is_empty() {
+                ui.label(&self.message);
+            }
+        });
+        egui::Panel::bottom("rows").default_size(150.0).show(ui, |ui| {
+            egui::CollapsingHeader::new("Written instructions").default_open(true).show(ui, |ui| {
+                egui::ScrollArea::vertical().max_height(120.0).show(ui, |ui| {
+                    for row in yarnfoundry_core::instructions(&chart).rows.iter().take(60) {
+                        ui.label(&row.text);
+                    }
+                });
+            });
+        });
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(theme::CANVAS_BG)).show(ui, |ui| {
+            let rect = ui.available_rect_before_wrap();
+            paint_chart(&ui.painter_at(rect), rect, &chart);
         });
     }
 }
@@ -258,5 +676,91 @@ mod tests {
         let mut out = ctx.run_ui(egui::RawInput::default(), |ui| app.ui(ui));
         out.textures_delta.clear();
         assert!(out.shapes.len() > 12 * 8, "{} shapes", out.shapes.len());
+    }
+
+    mod wizard {
+        use super::*;
+
+        fn frame(app: &mut YarnFoundryApp) -> usize {
+            let ctx = egui::Context::default();
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| app.ui(ui));
+            out.textures_delta.clear();
+            out.shapes.len()
+        }
+
+        #[test]
+        fn a_new_user_gets_from_launch_to_a_chart_in_five_steps_without_an_account() {
+            let mut app = YarnFoundryApp::new();
+            assert_eq!(app.step(), 1);
+            assert!(frame(&mut app) > 0);
+            assert!(app.go_next()); // 1 -> 2: the defaults are fine
+            assert_eq!(app.step(), 2);
+            assert!(!app.go_next(), "no words yet");
+            assert!(!app.error().is_empty());
+            app.words = "KING CASHEW".into();
+            assert!(frame(&mut app) > 0);
+            assert!(app.go_next()); // 2 -> 3
+            assert!(frame(&mut app) > 0);
+            assert!(app.go_next()); // 3 -> 4
+            assert!(frame(&mut app) > 0);
+            assert!(app.go_next()); // 4 -> 5: the chart is built
+            assert_eq!(app.step(), 5);
+            let chart = app.chart().expect("a chart");
+            let (cells, width, colours) = (chart.cells.len(), chart.width, chart.palette.len());
+            assert!(width > 100 && colours == 2);
+            assert!(frame(&mut app) > cells, "the preview draws every stitch");
+            assert!(!app.go_next(), "step 5 is the last");
+            app.back();
+            assert_eq!(app.step(), 4);
+        }
+
+        #[test]
+        fn a_picture_goes_through_the_same_steps_and_the_sample_picture_needs_no_file() {
+            let mut app = YarnFoundryApp::new();
+            app.go_next();
+            app.words_mode = false;
+            assert!(!app.go_next(), "a picture must be chosen");
+            app.use_picture_bytes(SAMPLE_PICTURE);
+            assert!(app.error().is_empty());
+            assert!(app.go_next() && app.go_next());
+            app.setup_mut().colours = yarnfoundry_core::Colours::FromPicture;
+            app.setup_mut().colour_count = 5;
+            assert!(app.go_next());
+            assert_eq!(app.chart().map(|c| c.palette.len()), Some(5));
+        }
+
+        #[test]
+        fn bad_pictures_and_bad_colours_are_messages_not_crashes() {
+            let mut app = YarnFoundryApp::new();
+            app.use_picture_bytes(b"definitely not a picture");
+            assert!(!app.error().is_empty());
+            let mut app = YarnFoundryApp::demo_at_step(4);
+            app.setup_mut().colours = yarnfoundry_core::Colours::Preset { preset: 0, picked: vec![1] };
+            assert!(!app.go_next());
+            assert_eq!(app.step(), 4);
+            assert!(frame(&mut app) > 0);
+        }
+
+        #[test]
+        fn every_step_draws_and_a_file_chart_has_no_setup_to_go_back_to() {
+            for step in 1..=5 {
+                let mut app = YarnFoundryApp::demo_at_step(step);
+                assert_eq!(app.step(), step);
+                assert!(frame(&mut app) > 0, "step {step}");
+            }
+            let chart = YarnFoundryApp::demo_at_step(5).chart().cloned().unwrap();
+            let mut app = YarnFoundryApp::with_chart(chart);
+            app.back();
+            assert_eq!(app.step(), 5);
+            app.restart();
+            assert_eq!(app.step(), 1);
+        }
+
+        #[test]
+        fn switching_craft_moves_the_technique_to_one_that_fits() {
+            let mut app = YarnFoundryApp::new();
+            app.setup_mut().set_craft(yarnfoundry_core::Craft::Crochet);
+            assert_eq!(app.setup_mut().technique, yarnfoundry_core::Technique::Tapestry);
+        }
     }
 }
