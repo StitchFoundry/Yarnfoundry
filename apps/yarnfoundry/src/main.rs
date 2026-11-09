@@ -8,16 +8,39 @@ use yarnfoundry_ui_egui::YarnFoundryApp;
 
 struct Host {
     app: YarnFoundryApp,
+    /// File name stem for saved prints.
+    stem: String,
 }
 
 impl eframe::App for Host {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.app.ui(ui);
+        if let Some(req) = self.app.take_print_request() {
+            let message = match self.app.chart().map(|chart| save_pdf(chart, &self.stem, req)) {
+                Some(Ok(path)) => format!("Saved {path}"),
+                Some(Err(e)) => format!("Could not save: {e}"),
+                None => String::new(),
+            };
+            self.app.set_message(message);
+        }
     }
+}
+
+/// Writes the printable chart as a PDF next to where the app was started; returns the file name.
+fn save_pdf(chart: &Chart, stem: &str, req: yarnfoundry_ui_egui::PrintRequest) -> Result<String, String> {
+    let opts = yarnfoundry_render::PrintOptions { paper: req.paper, look: req.look, title: stem.to_string() };
+    let pages = yarnfoundry_render::pages(chart, &opts).map_err(|e| e.to_string())?;
+    let name = format!("{stem}-{}.pdf", if req.paper == yarnfoundry_render::Paper::A4 { "a4" } else { "letter" });
+    std::fs::write(&name, yarnfoundry_render::pdf::to_pdf(&pages, stem)).map_err(|e| format!("{name}: {e}"))?;
+    Ok(name)
 }
 
 fn main() -> eframe::Result {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
+    let stem = std::env::args()
+        .nth(1)
+        .and_then(|p| Path::new(&p).file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "yarnfoundry-chart".to_string());
     let chart = std::env::args().nth(1).and_then(|path| match open(Path::new(&path)) {
         Ok(chart) => Some(chart),
         Err(e) => {
@@ -35,7 +58,7 @@ fn main() -> eframe::Result {
     eframe::run_native(
         yarnfoundry_core::APP_NAME,
         options,
-        Box::new(move |_cc| Ok(Box::new(Host { app: chart.map_or_else(YarnFoundryApp::new, YarnFoundryApp::with_chart) }))),
+        Box::new(move |_cc| Ok(Box::new(Host { app: chart.map_or_else(YarnFoundryApp::new, YarnFoundryApp::with_chart), stem }))),
     )
 }
 

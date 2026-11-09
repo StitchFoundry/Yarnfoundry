@@ -33,14 +33,52 @@ pub enum TextError {
     Chart(#[from] ChartError),
 }
 
+/// Stroke weight of the lettering.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum TextWeight {
+    /// The font as drawn (thin at small sizes).
+    Regular,
+    /// Strokes thickened by about half a stitch: the default, reads clearly on a scarf.
+    #[default]
+    Bold,
+    /// Strokes thickened by about a stitch and a half.
+    Heavy,
+}
+
+impl TextWeight {
+    /// Parses `regular`, `bold` or `heavy` (any case).
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_ascii_lowercase().as_str() {
+            "regular" | "normal" => Some(Self::Regular),
+            "bold" => Some(Self::Bold),
+            "heavy" => Some(Self::Heavy),
+            _ => None,
+        }
+    }
+
+    /// Horizontal and vertical extra strikes of the glyph, in stitches, and the coverage that counts as ink.
+    fn strikes(self) -> (&'static [(f32, f32)], f32) {
+        match self {
+            Self::Regular => (&[(0.0, 0.0)], 0.5),
+            Self::Bold => (&[(0.0, 0.0), (0.6, 0.0)], 0.4),
+            Self::Heavy => (&[(0.0, 0.0), (0.7, 0.0), (1.4, 0.0), (0.7, 0.5)], 0.4),
+        }
+    }
+}
+
+/// Default smallest letter height in rows, so a name on a scarf is readable.
+pub const DEFAULT_MIN_ROWS: u32 = 20;
+
 /// What to write and how.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TextOptions {
     pub text: String,
-    /// Font size: the height of the letters' line in rows (capitals fill most of it).
+    /// Height of the capital letters, in rows.
     pub rows_tall: u32,
-    /// Extra weight: thickens strokes.
-    pub bold: bool,
+    /// Smallest letter height in rows: `rows_tall` is raised to this (0 = no minimum).
+    pub min_rows: u32,
+    /// Stroke weight (default bold).
+    pub weight: TextWeight,
     /// Hollow letters: only the edge stitches are kept.
     pub outline: bool,
     /// Extra stitches between letters (may be negative, -3 to 20).
@@ -53,9 +91,19 @@ pub struct TextOptions {
 }
 
 impl TextOptions {
-    /// Sensible defaults for `text`: 12 rows tall, 2 stitches of margin.
+    /// Sensible defaults for `text`: 20 rows tall at least, bold, 2 stitches of margin.
     pub fn new(text: &str) -> Self {
-        Self { text: text.to_string(), rows_tall: 12, bold: false, outline: false, letter_spacing: 1, margin_cols: 2, margin_rows: 2, width: None }
+        Self {
+            text: text.to_string(),
+            rows_tall: 20,
+            min_rows: DEFAULT_MIN_ROWS,
+            weight: TextWeight::Bold,
+            outline: false,
+            letter_spacing: 1,
+            margin_cols: 2,
+            margin_rows: 2,
+            width: None,
+        }
     }
 }
 
@@ -87,18 +135,24 @@ pub fn text_to_mask(opts: &TextOptions, gauge: &Gauge) -> Result<TextMask, TextE
     if chars.len() > MAX_CHARS {
         return Err(TextError::TooLong);
     }
-    if !(MIN_ROWS..=MAX_ROWS).contains(&opts.rows_tall) {
+    if !(MIN_ROWS..=MAX_ROWS).contains(&opts.rows_tall) || opts.min_rows > MAX_ROWS {
         return Err(TextError::BadHeight);
     }
+    let rows_tall = opts.rows_tall.max(opts.min_rows);
     gauge.validate().map_err(ChartError::from)?;
     let aspect = gauge.stitch_aspect() as f32;
     let aspect = if aspect.is_finite() && aspect > 0.0 { aspect } else { 1.0 };
     let font = FontRef::try_from_slice(FONT_BYTES).map_err(|_| TextError::Font)?;
     // A stitch is wider than tall by `aspect`, so the same physical letter needs fewer columns than rows.
-    let scale = PxScale { x: opts.rows_tall as f32 / aspect, y: opts.rows_tall as f32 };
+    // `rows_tall` is the height of the capital letters, so size the font from the height of an "H".
+    let cap = cap_ratio(&font);
+    let px = rows_tall as f32 / cap;
+    let scale = PxScale { x: px / aspect, y: px };
     let scaled = font.as_scaled(scale);
     let spacing = opts.letter_spacing.clamp(-3, 20) as f32;
 
+    let (strikes, threshold) = opts.weight.strikes();
+    let extra_advance = strikes.iter().fold(0.0f32, |m, s| m.max(s.0));
     // Lay out on a float line, collecting glyph coverage.
     let mut pen = 0.0f32;
     let mut prev = None;
@@ -108,18 +162,19 @@ pub fn text_to_mask(opts: &TextOptions, gauge: &Gauge) -> Result<TextMask, TextE
         if let Some(p) = prev {
             pen += scaled.kern(p, id);
         }
-        if let Some(outlined) = font.outline_glyph(id.with_scale_and_position(scale, point(pen, scaled.ascent()))) {
-            let b = outlined.px_bounds();
-            let (bx, by) = (b.min.x.floor() as i32, b.min.y.floor() as i32);
-            outlined.draw(|gx, gy, cov| pixels.push((bx + gx as i32, by + gy as i32, cov)));
+        for &(dx, dy) in strikes {
+            if let Some(outlined) = font.outline_glyph(id.with_scale_and_position(scale, point(pen + dx, scaled.ascent() + dy))) {
+                let b = outlined.px_bounds();
+                let (bx, by) = (b.min.x.floor() as i32, b.min.y.floor() as i32);
+                outlined.draw(|gx, gy, cov| pixels.push((bx + gx as i32, by + gy as i32, cov)));
+            }
         }
-        pen += scaled.h_advance(id) + spacing;
+        pen += scaled.h_advance(id) + spacing + extra_advance;
         prev = Some(id);
     }
     if pen > MAX_SIDE as f32 * 2.0 {
         return Err(TextError::TooLarge);
     }
-    let threshold = if opts.bold { 0.25 } else { 0.5 };
     let on_pixels: Vec<(i32, i32)> = pixels.iter().filter(|p| p.2 >= threshold).map(|p| (p.0, p.1)).collect();
     let Some((min_x, max_x, min_y, max_y)) = bbox(&on_pixels) else { return Err(TextError::Empty) };
     let (iw, ih) = ((max_x - min_x + 1) as u32, (max_y - min_y + 1) as u32);
@@ -172,6 +227,13 @@ pub fn chart_from_text(
     Ok(Chart::new(mask.width, mask.height, cells, vec![background, lettering], craft, technique, construction, gauge)?)
 }
 
+/// Height of a capital letter as a fraction of the font's pixel size.
+fn cap_ratio(font: &FontRef) -> f32 {
+    const PROBE: f32 = 100.0;
+    let h = font.outline_glyph(font.glyph_id('H').with_scale(PxScale::from(PROBE))).map(|g| g.px_bounds().height() / PROBE);
+    h.filter(|r| r.is_finite() && *r > 0.1 && *r <= 1.0).unwrap_or(0.72)
+}
+
 fn bbox(points: &[(i32, i32)]) -> Option<(i32, i32, i32, i32)> {
     let first = points.first()?;
     Some(points.iter().fold((first.0, first.0, first.1, first.1), |b, p| (b.0.min(p.0), b.1.max(p.0), b.2.min(p.1), b.3.max(p.1))))
@@ -212,8 +274,7 @@ mod tests {
         use super::*;
 
         fn king_cashew() -> TextMask {
-            let mut o = TextOptions::new("KING CASHEW");
-            o.rows_tall = 18;
+            let o = TextOptions::new("KING CASHEW");
             text_to_mask(&o, &gauge()).unwrap()
         }
 
@@ -232,7 +293,7 @@ mod tests {
         #[test]
         fn king_cashew_is_readable_sized_and_both_words_are_there() {
             let mask = king_cashew();
-            assert!(mask.height >= 14 && mask.height <= 24, "height {}", mask.height);
+            assert!(mask.height >= 22 && mask.height <= 30, "height {}", mask.height);
             // a clear gap between the two words: a run of empty columns wider than the letter gaps
             let empty_cols: Vec<bool> = (0..mask.width).map(|x| (0..mask.height).all(|y| !mask.get(x, y))).collect();
             let mut runs = Vec::new();
@@ -255,6 +316,7 @@ mod tests {
         #[test]
         fn a_capital_i_is_a_solid_bar_about_as_tall_as_asked() {
             let mut o = TextOptions::new("I");
+            o.min_rows = 0;
             o.margin_cols = 0;
             o.margin_rows = 0;
             o.rows_tall = 20;
@@ -266,11 +328,15 @@ mod tests {
         #[test]
         fn bold_has_more_ink_and_outline_has_less_and_is_hollow() {
             let g = gauge();
-            let plain = text_to_mask(&TextOptions::new("OM"), &g).unwrap();
-            let mut b = TextOptions::new("OM");
-            b.bold = true;
+            let mut r = TextOptions::new("OM");
+            r.weight = TextWeight::Regular;
+            let plain = text_to_mask(&r, &g).unwrap();
+            let mut b = r.clone();
+            b.weight = TextWeight::Bold;
             let bold = text_to_mask(&b, &g).unwrap();
-            assert!(ink(&bold) > ink(&plain));
+            b.weight = TextWeight::Heavy;
+            let heavy = text_to_mask(&b, &g).unwrap();
+            assert!(ink(&bold) > ink(&plain) && ink(&heavy) > ink(&bold), "{} {} {}", ink(&plain), ink(&bold), ink(&heavy));
             let mut o = TextOptions::new("OM");
             o.rows_tall = 24;
             let filled = text_to_mask(&o, &g).unwrap();
@@ -318,6 +384,67 @@ mod tests {
         }
     }
 
+    mod readability {
+        use super::*;
+
+        /// Longest run of ink in row `y` that starts at the left edge of column range [from, to).
+        fn runs_in_row(m: &TextMask, y: u32) -> Vec<u32> {
+            let mut runs = Vec::new();
+            let mut run = 0;
+            for x in 0..m.width {
+                if m.get(x, y) {
+                    run += 1;
+                } else if run > 0 {
+                    runs.push(run);
+                    run = 0;
+                }
+            }
+            if run > 0 {
+                runs.push(run);
+            }
+            runs
+        }
+
+        #[test]
+        fn a_small_request_is_raised_to_the_minimum_letter_height() {
+            let g = gauge();
+            let mut small = TextOptions::new("KING");
+            small.rows_tall = 8;
+            let raised = text_to_mask(&small, &g).unwrap();
+            let mut at_min = TextOptions::new("KING");
+            at_min.rows_tall = DEFAULT_MIN_ROWS;
+            assert_eq!(raised, text_to_mask(&at_min, &g).unwrap());
+            small.min_rows = 0;
+            assert!(text_to_mask(&small, &g).unwrap().height < raised.height);
+        }
+
+        #[test]
+        fn the_k_and_w_of_king_cashew_have_strokes_at_least_two_stitches_wide() {
+            // Thin strokes (1 stitch) were the bug: every row through the letters must have runs of 2 or more.
+            let mut o = TextOptions::new("K");
+            o.margin_cols = 0;
+            o.margin_rows = 0;
+            let k = text_to_mask(&o, &gauge()).unwrap();
+            let mid = k.height / 2;
+            assert!(runs_in_row(&k, mid).iter().all(|&r| r >= 2), "K middle row {:?}\n{}", runs_in_row(&k, mid), k.to_ascii());
+            let mut o = TextOptions::new("W");
+            o.margin_cols = 0;
+            o.margin_rows = 0;
+            let w = text_to_mask(&o, &gauge()).unwrap();
+            let mid = w.height / 2;
+            assert!(runs_in_row(&w, mid).iter().all(|&r| r >= 2), "W middle row {:?}\n{}", runs_in_row(&w, mid), w.to_ascii());
+        }
+
+        #[test]
+        fn weight_parses_from_words() {
+            assert_eq!(TextWeight::parse("Bold"), Some(TextWeight::Bold));
+            assert_eq!(TextWeight::parse("heavy"), Some(TextWeight::Heavy));
+            assert_eq!(TextWeight::parse("regular"), Some(TextWeight::Regular));
+            assert_eq!(TextWeight::parse("fat"), None);
+            assert_eq!(TextOptions::new("x").weight, TextWeight::Bold);
+        }
+    }
+
     mod errors {
         use super::*;
 
@@ -349,7 +476,8 @@ mod tests {
             #[test]
             fn any_text_and_options_never_panic(text in ".{0,40}", rows in 0u32..60, spacing in -10i32..30, bold in any::<bool>(), outline in any::<bool>()) {
                 let mut o = TextOptions::new(&text);
-                (o.rows_tall, o.letter_spacing, o.bold, o.outline) = (rows, spacing, bold, outline);
+                (o.rows_tall, o.letter_spacing, o.outline) = (rows, spacing, outline);
+                o.weight = if bold { TextWeight::Heavy } else { TextWeight::Regular };
                 let _ = text_to_mask(&o, &gauge());
             }
         }

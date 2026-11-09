@@ -3286,6 +3286,7 @@ dependencies = [
  "env_logger",
  "log",
  "yarnfoundry-core",
+ "yarnfoundry-render",
  "yarnfoundry-ui-egui",
 ]
 
@@ -3294,6 +3295,7 @@ name = "yarnfoundry-cli"
 version = "0.1.0"
 dependencies = [
  "yarnfoundry-core",
+ "yarnfoundry-render",
 ]
 
 [[package]]
@@ -3312,6 +3314,9 @@ dependencies = [
 name = "yarnfoundry-render"
 version = "0.1.0"
 dependencies = [
+ "ab_glyph",
+ "image",
+ "thiserror 2.0.21",
  "yarnfoundry-core",
 ]
 
@@ -3321,6 +3326,7 @@ version = "0.1.0"
 dependencies = [
  "egui",
  "yarnfoundry-core",
+ "yarnfoundry-render",
 ]
 
 [[package]]

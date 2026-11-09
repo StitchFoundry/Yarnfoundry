@@ -21,3 +21,4 @@ Making-of log for the YarnFoundry video. Times are UTC.
 | 2026-11-09 14:42 | PR #15 (YF-4) CI green, squash-merged | [#15](https://github.com/StitchFoundry/Yarnfoundry/pull/15) | |
 | 2026-11-09 14:44 | PR #16 (YF-5) opened | [#16](https://github.com/StitchFoundry/Yarnfoundry/pull/16) | |
 | 2026-11-09 14:42 | PR #16 (YF-5) CI green, squash-merged; main re-checked green | [#16](https://github.com/StitchFoundry/Yarnfoundry/pull/16) | |
+| 2026-11-09 15:32 | First printable chart page (KING CASHEW scarf, bold letters, black symbols on colour, row numbers on the correct sides, 10-stitch lines, 1-inch scale bar) rendered from the PDF layout to PNG | PR for #7 (YF-6) | docs/build-story/20261109-1532-issue-7.png |

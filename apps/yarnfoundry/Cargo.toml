@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 yarnfoundry-core = { workspace = true }
+yarnfoundry-render = { workspace = true }
 yarnfoundry-ui-egui = { workspace = true }
 eframe = { workspace = true, features = ["default_fonts", "glow", "wayland", "x11"] }
 egui = { workspace = true }
