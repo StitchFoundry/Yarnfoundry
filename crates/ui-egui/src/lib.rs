@@ -34,6 +34,8 @@ pub struct YarnFoundryApp {
     export: Option<PrintRequest>,
     save_project: bool,
     load_picture: Option<String>,
+    /// False in the browser: no file paths, only a file chooser.
+    can_read_paths: bool,
 }
 
 impl Default for YarnFoundryApp {
@@ -74,6 +76,7 @@ impl YarnFoundryApp {
             export: None,
             save_project: false,
             load_picture: None,
+            can_read_paths: true,
         }
     }
 
@@ -95,6 +98,11 @@ impl YarnFoundryApp {
             app.build_preview();
         }
         app
+    }
+
+    /// Whether the host can read a file by path (desktop). In the browser the picture step offers a file chooser instead.
+    pub fn set_can_read_paths(&mut self, yes: bool) {
+        self.can_read_paths = yes;
     }
 
     pub fn step(&self) -> usize {
@@ -314,13 +322,17 @@ impl YarnFoundryApp {
             if ui.button("Use the sample picture (sunset over hills)").clicked() {
                 self.use_picture_bytes(SAMPLE_PICTURE);
             }
-            ui.horizontal(|ui| {
-                ui.label("or a file (PNG, JPEG, WebP):");
-                ui.add(egui::TextEdit::singleline(&mut self.picture_path).hint_text("path to a picture").desired_width(300.0));
-                if ui.button("Load").clicked() && !self.picture_path.trim().is_empty() {
-                    self.load_picture = Some(self.picture_path.trim().to_string());
-                }
-            });
+            if self.can_read_paths {
+                ui.horizontal(|ui| {
+                    ui.label("or a file (PNG, JPEG, WebP):");
+                    ui.add(egui::TextEdit::singleline(&mut self.picture_path).hint_text("path to a picture").desired_width(300.0));
+                    if ui.button("Load").clicked() && !self.picture_path.trim().is_empty() {
+                        self.load_picture = Some(self.picture_path.trim().to_string());
+                    }
+                });
+            } else if ui.button("Choose a picture file (PNG, JPEG, WebP)...").clicked() {
+                self.load_picture = Some(String::new()); // empty: the host opens its own chooser
+            }
             if let Some(pic) = &self.picture {
                 ui.label(format!("Picture loaded: {} x {} pixels", pic.width, pic.height));
             }

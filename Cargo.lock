@@ -3284,6 +3284,7 @@ dependencies = [
  "eframe",
  "egui",
  "env_logger",
+ "image",
  "log",
  "yarnfoundry-core",
  "yarnfoundry-render",
@@ -3327,6 +3328,21 @@ dependencies = [
  "egui",
  "yarnfoundry-core",
  "yarnfoundry-render",
+]
+
+[[package]]
+name = "yarnfoundry-web"
+version = "0.1.0"
+dependencies = [
+ "eframe",
+ "egui",
+ "js-sys",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "yarnfoundry-core",
+ "yarnfoundry-render",
+ "yarnfoundry-ui-egui",
 ]
 
 [[package]]

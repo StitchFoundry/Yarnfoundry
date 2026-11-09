@@ -16,5 +16,6 @@ yarnfoundry-render = { workspace = true }
 yarnfoundry-ui-egui = { workspace = true }
 eframe = { workspace = true, features = ["default_fonts", "glow", "wayland", "x11"] }
 egui = { workspace = true }
+image = { workspace = true }
 log = { workspace = true }
 env_logger = "0.11"

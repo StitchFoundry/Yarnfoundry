@@ -1,5 +1,6 @@
 //! YarnFoundry desktop app: hosts the egui front end in an eframe window.
-//! `yarnfoundry [file]` opens a `.yarnfoundry` project or turns a PNG/JPEG/WebP picture into a chart.
+//! `yarnfoundry --screenshot <out.png> [--project f] [--step N]` draws the window, saves it as a PNG and exits (needs a display;
+//! on a machine without one use `xvfb-run`). `yarnfoundry [file]` opens a `.yarnfoundry` project or turns a PNG/JPEG/WebP picture into a chart.
 
 use std::path::Path;
 
@@ -10,11 +11,43 @@ struct Host {
     app: YarnFoundryApp,
     /// File name stem for saved prints.
     stem: String,
+    /// `--screenshot`: where to write the PNG, and how many frames have been drawn so far.
+    screenshot: Option<(String, u32)>,
+}
+
+/// Frames to draw before the screenshot, so the layout has settled.
+const SCREENSHOT_AFTER_FRAMES: u32 = 6;
+
+fn write_png(image: &egui::ColorImage, path: &str) -> Result<(), String> {
+    use image::ImageEncoder;
+    let rgba: Vec<u8> = image.pixels.iter().flat_map(|p| p.to_array()).collect();
+    let mut bytes = Vec::new();
+    image::codecs::png::PngEncoder::new(&mut bytes)
+        .write_image(&rgba, image.width() as u32, image.height() as u32, image::ExtendedColorType::Rgba8)
+        .map_err(|e| e.to_string())?;
+    std::fs::write(path, bytes).map_err(|e| format!("{path}: {e}"))
 }
 
 impl eframe::App for Host {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.app.ui(ui);
+        if let Some((path, frames)) = &mut self.screenshot {
+            *frames += 1;
+            let ctx = ui.ctx().clone();
+            if *frames == SCREENSHOT_AFTER_FRAMES {
+                let path = path.clone();
+                let done = ctx.clone();
+                ctx.request_screenshot(move |image| {
+                    if let Err(e) = write_png(&image, &path) {
+                        eprintln!("screenshot failed: {e}");
+                        std::process::exit(1);
+                    }
+                    println!("screenshot -> {path}");
+                    done.send_viewport_cmd(egui::ViewportCommand::Close);
+                });
+            }
+            ctx.request_repaint();
+        }
         if let Some(path) = self.app.take_load_picture() {
             match std::fs::read(&path) {
                 Ok(bytes) => self.app.use_picture_bytes(&bytes),
@@ -61,7 +94,9 @@ fn main() -> eframe::Result {
     let args: Vec<String> = std::env::args().skip(1).collect();
     // `--step N` starts the setup at step N with the demo words filled in (for screenshots).
     let demo_step = args.iter().position(|a| a == "--step").and_then(|i| args.get(i + 1)).and_then(|v| v.parse::<usize>().ok());
-    let file = args.first().filter(|a| !a.starts_with("--")).cloned();
+    let value_of = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned();
+    let screenshot = value_of("--screenshot");
+    let file = value_of("--project").or_else(|| args.first().filter(|a| !a.starts_with("--")).cloned());
     let stem = file
         .clone()
         .and_then(|p| Path::new(&p).file_stem().map(|s| s.to_string_lossy().into_owned()))
@@ -87,6 +122,7 @@ fn main() -> eframe::Result {
             Ok(Box::new(Host {
                 app: demo_step.map_or_else(|| chart.map_or_else(YarnFoundryApp::new, YarnFoundryApp::with_chart), YarnFoundryApp::demo_at_step),
                 stem,
+                screenshot: screenshot.map(|p| (p, 0)),
             }))
         }),
     )
