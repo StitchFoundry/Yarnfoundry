@@ -1,7 +1,7 @@
 //! A simple 3D view drawn as flat-shaded polygons on a [`Page`], so the PNG, SVG and PDF back ends can all show a model.
 //! Painter's algorithm (far to near), one light, no textures. Used for the build-story pictures and the PDF cover.
 
-use yarnfoundry_core::Mesh;
+use yarnfoundry_core::{Figure, Mesh, Round};
 
 use crate::draw::{Page, Rgb};
 
@@ -19,6 +19,7 @@ impl Default for Camera {
 }
 
 type V3 = [f64; 3];
+type Drawn = (f64, Vec<(f32, f32)>, Rgb);
 type Tri = (f64, [(f32, f32); 3], Rgb);
 
 impl Camera {
@@ -82,6 +83,85 @@ pub fn draw_mesh(page: &mut Page, mesh: &Mesh, cam: &Camera, frame: Frame, colou
     for (_, pts, fill) in tris {
         // A hairline of the same colour hides seams between neighbours.
         page.prims.push(crate::draw::Prim::Poly { pts: pts.to_vec(), fill: Some(fill), stroke: Some((fill, 0.3)) });
+    }
+}
+
+/// Colours for parts (colour-blind-friendly, mid-tones), by part number.
+pub const PART_COLOURS: [Rgb; 8] =
+    [[204, 102, 85], [86, 140, 190], [224, 170, 60], [112, 168, 110], [160, 110, 180], [210, 130, 160], [120, 180, 180], [170, 140, 100]];
+
+/// Draws the crocheted result: every round of every part as a ring of the right size and height, coloured by part,
+/// with every 5th round lighter so rounds can be counted. `focus` limits the picture to one part.
+pub fn draw_figure(page: &mut Page, figure: &Figure, cam: &Camera, frame: Frame, focus: Option<usize>) {
+    const SEG: usize = 28;
+    let mut pts_all: Vec<V3> = Vec::new();
+    let mut quads: Vec<([V3; 4], Rgb, bool)> = Vec::new(); // corners (model space), colour, highlight
+    for (pi, part) in figure.parts.iter().enumerate() {
+        if focus.is_some_and(|f| f != pi) {
+            continue;
+        }
+        let base = PART_COLOURS[pi % PART_COLOURS.len()];
+        let ring = |r: &Round, k: usize| -> V3 {
+            let a = std::f64::consts::TAU * k as f64 / SEG as f64;
+            [r.center[0] + r.radius * a.cos(), r.center[1] + r.radius * a.sin(), r.z]
+        };
+        for w in part.rounds.windows(2) {
+            let hl = w[1].index % 5 == 0;
+            for k in 0..SEG {
+                let q = [ring(&w[0], k), ring(&w[0], k + 1), ring(&w[1], k + 1), ring(&w[1], k)];
+                pts_all.extend(q);
+                quads.push((q, base, hl));
+            }
+        }
+        // Caps on closed tips so there are no holes.
+        for (r, first) in [(part.rounds.first(), true), (part.rounds.last(), false)] {
+            if let Some(r) = r {
+                let closed = if first { true } else { part.closed_last };
+                if closed {
+                    let c = [r.center[0], r.center[1], r.z];
+                    for k in 0..SEG {
+                        let q = [c, ring(r, k), ring(r, k + 1), c];
+                        pts_all.extend(q);
+                        quads.push((q, base, false));
+                    }
+                }
+            }
+        }
+    }
+    if quads.is_empty() {
+        return;
+    }
+    let mut lo = [f64::INFINITY; 3];
+    let mut hi = [f64::NEG_INFINITY; 3];
+    for p in &pts_all {
+        let r = cam.rotate(*p);
+        for a in 0..3 {
+            lo[a] = lo[a].min(r[a]);
+            hi[a] = hi[a].max(r[a]);
+        }
+    }
+    let scale = (f64::from(frame.w) / (hi[0] - lo[0]).max(1e-9)).min(f64::from(frame.h) / (hi[1] - lo[1]).max(1e-9)) * 0.92;
+    let c = [(lo[0] + hi[0]) / 2.0, (lo[1] + hi[1]) / 2.0];
+    let cx = f64::from(frame.x) + f64::from(frame.w) / 2.0;
+    let cy = f64::from(frame.y) + f64::from(frame.h) / 2.0;
+    let light = normalize([-0.4, 0.5, 0.8]);
+    let mut drawn: Vec<Drawn> = Vec::new();
+    for (q, col, hl) in &quads {
+        let v: Vec<V3> = q.iter().map(|p| cam.rotate(*p)).collect();
+        let n = normalize(cross(sub(v[1], v[0]), sub(v[2], v[0])));
+        // Rings have no inside/outside from winding alone, so light by the absolute angle.
+        let lum = (0.35 + 0.65 * dot(n, light).abs()).clamp(0.0, 1.0);
+        let lift = if *hl { 1.0 } else { 0.0 };
+        let shade = [0, 1, 2].map(|k| {
+            let base = f64::from(col[k]) * lum;
+            (base + (255.0 - base) * 0.45 * lift).round().clamp(0.0, 255.0) as u8
+        });
+        let pts: Vec<(f32, f32)> = v.iter().map(|p| ((cx + (p[0] - c[0]) * scale) as f32, (cy - (p[1] - c[1]) * scale) as f32)).collect();
+        drawn.push((v.iter().map(|p| p[2]).sum::<f64>() / 4.0, pts, shade));
+    }
+    drawn.sort_by(|a, b| a.0.total_cmp(&b.0));
+    for (_, pts, fill) in drawn {
+        page.prims.push(crate::draw::Prim::Poly { pts, fill: Some(fill), stroke: Some((fill, 0.3)) });
     }
 }
 
