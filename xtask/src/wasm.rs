@@ -8,7 +8,7 @@ use serde_json::Value;
 
 const TARGET: &str = "wasm32-unknown-unknown";
 
-pub const WASM: &[&str] = &["yarnfoundry-core", "yarnfoundry-render", "yarnfoundry-ui-egui"];
+pub const WASM: &[&str] = &["yarnfoundry-core", "yarnfoundry-render", "yarnfoundry-ui-egui", "yarnfoundry-web"];
 pub const NATIVE_ONLY: &[&str] = &["yarnfoundry", "yarnfoundry-cli", "xtask"];
 
 pub fn run(root: &Path) -> Result<(), String> {

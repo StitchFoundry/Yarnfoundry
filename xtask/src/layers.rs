@@ -11,6 +11,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ("yarnfoundry-render", &["yarnfoundry-core"]),
     ("yarnfoundry-ui-egui", &["yarnfoundry-core", "yarnfoundry-render"]),
     ("yarnfoundry", &["yarnfoundry-core", "yarnfoundry-render", "yarnfoundry-ui-egui"]),
+    ("yarnfoundry-web", &["yarnfoundry-core", "yarnfoundry-render", "yarnfoundry-ui-egui"]),
     ("yarnfoundry-cli", &["yarnfoundry-core", "yarnfoundry-render"]),
     ("xtask", &[]),
 ];
@@ -35,7 +36,7 @@ pub fn run(root: &Path) -> Result<(), String> {
         };
         for d in p["dependencies"].as_array().map(Vec::as_slice).unwrap_or_default() {
             let dep = d["name"].as_str().unwrap_or_default();
-            let ui_ok = matches!(name, "yarnfoundry-ui-egui" | "yarnfoundry");
+            let ui_ok = matches!(name, "yarnfoundry-ui-egui" | "yarnfoundry" | "yarnfoundry-web");
             if dep.starts_with("yarnfoundry") && !allowed.contains(&dep) {
                 problems.push(format!("{name} must not depend on {dep}"));
             }
