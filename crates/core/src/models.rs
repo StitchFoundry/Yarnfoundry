@@ -227,6 +227,45 @@ pub fn sticks(parts: &[([f64; 3], [f64; 3], f64)], cells: usize) -> Mesh {
     implicit(&move |p| parts.iter().map(|(a, b, r)| stick(p, *a, *b, *r)).fold(f64::INFINITY, f64::min), lo, hi, cells)
 }
 
+/// Names of the built-in sample models.
+pub const SAMPLES: [&str; 6] = ["sphere", "capsule", "cone", "snowman", "limbs", "bear"];
+
+/// A built-in sample model by name (sizes are arbitrary; set the finished height with `Mesh::fitted`).
+pub fn sample(name: &str) -> Option<Mesh> {
+    Some(match name {
+        "sphere" => sphere(1.0),
+        "capsule" => capsule(1.0, 1.5),
+        "cone" => cone(1.0, 2.0),
+        "snowman" => snowman(),
+        "limbs" => limb_figure(),
+        "bear" => bear(),
+        _ => return None,
+    })
+}
+
+/// A simple round bear, original and made from code: a ball head, a capsule body, two arms, two legs and two ears
+/// (one closed surface). It stands about 3.4 units tall.
+pub fn bear() -> Mesh {
+    sticks(
+        &[
+            // body
+            ([0.0, 0.0, 1.0], [0.0, 0.0, 2.0], 0.6),
+            // head: a ball above the body with a neck between
+            ([0.0, 0.0, 3.1], [0.0, 0.0, 3.1], 0.68),
+            // ears: balls on top of the head, mostly above it
+            ([0.5, 0.0, 3.7], [0.5, 0.0, 3.7], 0.32),
+            ([-0.5, 0.0, 3.7], [-0.5, 0.0, 3.7], 0.32),
+            // arms, slanting down and out from the shoulders
+            ([0.78, 0.0, 1.9], [1.4, 0.0, 1.1], 0.24),
+            ([-0.78, 0.0, 1.9], [-1.4, 0.0, 1.1], 0.24),
+            // legs, slanting down and out from the hips
+            ([0.3, 0.0, 0.9], [0.8, 0.0, -0.5], 0.26),
+            ([-0.3, 0.0, 0.9], [-0.8, 0.0, -0.5], 0.26),
+        ],
+        72,
+    )
+}
+
 /// A simple figure for tests and demos: a capsule body with four limbs, two legs below and two arms above,
 /// each limb slanting outwards (the same shape on both sides).
 pub fn limb_figure() -> Mesh {

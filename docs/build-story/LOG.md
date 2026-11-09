@@ -32,3 +32,5 @@ Making-of log for the YarnFoundry video. Times are UTC.
 | 2026-11-09 17:37 | First 3D model loaded: the built-in snowman (two balls, one closed surface) checked, set upright at 7 in and drawn | PR for #23 (YF-11) | docs/build-story/20261109-1737-issue-23.png |
 | 2026-11-09 17:47 | First sphere pattern: a 2.3 in ball becomes 17 rounds, 6, 12, 18, 23, 28, 31, 34, 36 and back down to 6 | PR for #24 (YF-12) | docs/build-story/20261109-1747-issue-24.png |
 | 2026-11-09 17:56 | Snowman split into parts: body (27 rounds, red) and head (16 rounds, blue), rounds drawn as rings with every 5th lighter, assembly note | PR for #26 (YF-14) | docs/build-story/20261109-1756-issue-26.png |
+| 2026-11-09 18:04 | 3D preview in the app, sphere: the original ball beside the crocheted rings (every 5th round lighter) | PR for #27 (YF-15) | docs/build-story/20261109-1804-issue-27-sphere.png |
+| 2026-11-09 18:04 | 3D preview in the app, snowman: original beside the crocheted result coloured by part (body red 27 rounds, head blue 16 rounds) | PR for #27 (YF-15) | docs/build-story/20261109-1804-issue-27-snowman.png |

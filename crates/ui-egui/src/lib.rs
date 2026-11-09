@@ -1,5 +1,7 @@
 //! YarnFoundry UI: a thin egui front end. Panels read core state; colours come from [`theme`].
 
+pub mod figure3d;
+
 pub mod theme {
     use egui::Color32;
 
@@ -36,6 +38,15 @@ pub struct YarnFoundryApp {
     load_picture: Option<String>,
     /// False in the browser: no file paths, only a file chooser.
     can_read_paths: bool,
+    /// A 3D figure being previewed (instead of the chart setup).
+    figure: Option<FigureState>,
+}
+
+/// A fitted model, its parts and the preview camera.
+struct FigureState {
+    mesh: yarnfoundry_core::Mesh,
+    figure: yarnfoundry_core::Figure,
+    view: figure3d::FigureView,
 }
 
 impl Default for YarnFoundryApp {
@@ -77,7 +88,13 @@ impl YarnFoundryApp {
             save_project: false,
             load_picture: None,
             can_read_paths: true,
+            figure: None,
         }
+    }
+
+    /// An app showing the 3D preview of a fitted model and its parts.
+    pub fn with_figure(mesh: yarnfoundry_core::Mesh, figure: yarnfoundry_core::Figure) -> Self {
+        Self { figure: Some(FigureState { mesh, figure, view: figure3d::FigureView::default() }), ..Self::new() }
     }
 
     /// An app showing `chart` (opened from a file).
@@ -225,7 +242,11 @@ impl YarnFoundryApp {
                 ui.label(format!("v{}", yarnfoundry_core::VERSION));
                 ui.separator();
                 let step = self.step.clamp(1, yarnfoundry_core::setup::STEPS);
-                ui.label(egui::RichText::new(format!("Step {step} of {}: {}", yarnfoundry_core::setup::STEPS, STEP_TITLES[step - 1])).strong());
+                if self.figure.is_some() {
+                    ui.label(egui::RichText::new("3D figure: from model to crochet parts").strong());
+                } else {
+                    ui.label(egui::RichText::new(format!("Step {step} of {}: {}", yarnfoundry_core::setup::STEPS, STEP_TITLES[step - 1])).strong());
+                }
                 if let (5, Some(chart)) = (self.step, &self.chart) {
                     let (w, h) = chart.finished_size();
                     let unit = if chart.gauge.unit == yarnfoundry_core::Unit::Cm { "cm" } else { "in" };
@@ -242,7 +263,11 @@ impl YarnFoundryApp {
                 }
             });
         });
-        if self.step == yarnfoundry_core::setup::STEPS && self.chart.is_some() {
+        if let Some(f) = &mut self.figure {
+            egui::CentralPanel::default().frame(egui::Frame::new().fill(theme::CANVAS_BG).inner_margin(12.0)).show(ui, |ui| {
+                f.view.ui(ui, &f.mesh, &f.figure);
+            });
+        } else if self.step == yarnfoundry_core::setup::STEPS && self.chart.is_some() {
             self.preview_ui(ui);
         } else {
             self.setup_ui(ui);

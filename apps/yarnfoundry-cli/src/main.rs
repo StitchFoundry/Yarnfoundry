@@ -165,14 +165,7 @@ fn load_fitted(args: &[String]) -> Result<(yarnfoundry_core::Mesh, yarnfoundry_c
     let value = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1));
     let (mesh, report) = match input.strip_prefix("sample:") {
         Some(name) => {
-            let m = match name {
-                "sphere" => models::sphere(1.0),
-                "capsule" => models::capsule(1.0, 1.5),
-                "cone" => models::cone(1.0, 2.0),
-                "snowman" => models::snowman(),
-                "limbs" => models::limb_figure(),
-                _ => return Err("samples: sphere, capsule, cone, snowman, limbs".to_string()),
-            };
+            let m = models::sample(name).ok_or_else(|| format!("samples: {}", models::SAMPLES.join(", ")))?;
             m.checked().map_err(|e| e.to_string())?
         }
         None => yarnfoundry_core::import_model(&std::fs::read(input).map_err(|e| format!("{input}: {e}"))?).map_err(|e| e.to_string())?,

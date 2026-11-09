@@ -126,7 +126,7 @@ pub fn split_figure(mesh: &Mesh, gauge: &Gauge, manual: &ManualSplits) -> Result
                     let p = *p;
                     if up[p].len() == 1 || (largest(&up[p]) == Some(nd) && per[nd] >= 0.5 * per[p]) { Some(p) } else { None }
                 }
-                many => largest(many).filter(|&m| up[m].len() == 1 && per[nd] <= 1.6 * per[m]),
+                many => largest(many).filter(|&m| up[m].len() == 1 && per[m] >= 0.5 * per[nd]),
             };
             match continues.map(|p| chain_of[p]).filter(|&c| chains[c].nodes.last().is_some_and(|&l| continues == Some(l))) {
                 Some(c) => {
