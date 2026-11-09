@@ -1,0 +1,5 @@
+YarnFoundry
+Copyright (c) 2026 StitchFoundry
+Licensed under the MIT License (see LICENSE).
+
+Third-party crates are used under their own permissive licenses; see Cargo.lock for the list.
