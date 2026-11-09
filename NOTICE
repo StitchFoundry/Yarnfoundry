@@ -1,5 +1,5 @@
 YarnFoundry
 Copyright (c) 2026 StitchFoundry
-Licensed under the MIT License (see LICENSE).
+Licensed under either of the Apache License, Version 2.0 (see LICENSE-APACHE) or the MIT license (see LICENSE-MIT), at your option.
 
 Third-party crates are used under their own permissive licenses; see Cargo.lock for the list.

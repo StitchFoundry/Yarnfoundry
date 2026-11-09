@@ -24,7 +24,7 @@ a failing test to get green. Pull main and re-run the gate after a merge. Merge 
   and any GPL/AGPL/LGPL knitting or crochet tool. Features come from public descriptions and published papers (cited by URL).
   Competitor names do not appear in code, UI text, fixtures or marketing; never call YarnFoundry a clone or alternative.
 - **Original designs only.** No licensed characters, no yarn brand or colour-card names (generic colour names only).
-- **Licenses.** MIT. Dependencies must be MIT or Apache-2.0 (or compatible permissive). Never change `LICENSE`. A non-permissive dependency or any CI workflow change after YF-0 gets the `needs-review` label and is not self-merged.
+- **Licenses.** MIT OR Apache-2.0 (dual, from 2026-11-09). Dependencies must be MIT or Apache-2.0 (or compatible permissive). Never change `LICENSE-MIT` or `LICENSE-APACHE`. A non-permissive dependency or any CI workflow change after YF-0 gets the `needs-review` label and is not self-merged.
 - **Assets.** Anything file-based (fonts, images) must be original or openly licensed with a row in `ASSETS.md` (`cargo xtask assets` enforces it).
 - **Never crash.** No `unwrap`/`expect`/`panic!` in shipped code (clippy denies them; tests may). Files and pasted data are untrusted: cap sizes, use `.get()`, check floats are finite, never divide by zero. Every parser ships with hostile-input tests.
 - **Layering** (`cargo xtask layers`): `yarnfoundry-core` has no UI, no I/O, no workspace deps; nothing below `ui-egui` uses egui.
