@@ -1,6 +1,6 @@
 # Status
 
-- Done and merged: YF-0 (#11), YF-1 (#12). PR #13 (YF-2) open, CI running.
-- In progress: YF-3 (#4) words to chart, branch claude/issue-4.
-- Next: YF-4 (#5) technique rules.
+- Done and merged: YF-0 (#11), YF-1 (#12), YF-2 (#13). PR #14 (YF-3) open, CI running.
+- In progress: YF-4 (#5) technique rules, branch claude/issue-5.
+- Next: YF-5 (#6) written instructions.
 - Blockers: none.
