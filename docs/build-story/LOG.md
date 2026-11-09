@@ -27,3 +27,4 @@ Making-of log for the YarnFoundry video. Times are UTC.
 | 2026-11-09 15:40 | Step 3: size and gauge, 'I don't know my gauge' by yarn weight | PR for #8 (YF-7) | docs/build-story/20261109-1540-issue-8-step3.png |
 | 2026-11-09 15:40 | Step 4: colours from a generic palette (navy background, gold letters) | PR for #8 (YF-7) | docs/build-story/20261109-1540-issue-8-step4.png |
 | 2026-11-09 15:40 | Step 5: preview with row numbers, legend, written rows, print and save buttons | PR for #8 (YF-7) | docs/build-story/20261109-1540-issue-8-step5.png |
+| 2026-11-09 15:55 | PR for #10 (dual licence MIT OR Apache-2.0) opened, labelled needs-review, not merged (no visible change) | PR for #10 | |
