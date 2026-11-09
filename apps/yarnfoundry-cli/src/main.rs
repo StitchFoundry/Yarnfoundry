@@ -6,7 +6,7 @@
 
 use yarnfoundry_core::{Construction, Craft, Gauge, PaletteColor, PaletteSpec, Picture, PictureOptions, Technique, TextOptions, TextWeight, Unit};
 
-const USAGE: &str = "usage: yarnfoundry-cli [--version]\n       yarnfoundry-cli print <file.yarnfoundry> <out.pdf|out.svg|out.png> [--paper letter|a4] [--bw|--symbols] [--page N] [--dpi N] [--title T]\n       yarnfoundry-cli picture <image> <out.yarnfoundry> [--width N] [--colors K]\n       yarnfoundry-cli instructions <file.yarnfoundry>\n       yarnfoundry-cli model <file.stl|file.obj|sample:NAME> [--height N] [--unit in|cm] [--up x|y|z] [--png out.png]\n       yarnfoundry-cli rounds <file.stl|file.obj|sample:NAME> [--height N] [--unit in|cm] [--up x|y|z] [--sts N] [--rows N] [--png out.png]\n       yarnfoundry-cli text \"<words>\" <out.yarnfoundry> [--rows N] [--width N] [--spacing N] [--weight regular|bold|heavy] [--min-rows N] [--outline]";
+const USAGE: &str = "usage: yarnfoundry-cli [--version]\n       yarnfoundry-cli print <file.yarnfoundry> <out.pdf|out.svg|out.png> [--paper letter|a4] [--bw|--symbols] [--page N] [--dpi N] [--title T]\n       yarnfoundry-cli picture <image> <out.yarnfoundry> [--width N] [--colors K]\n       yarnfoundry-cli instructions <file.yarnfoundry>\n       yarnfoundry-cli model <file.stl|file.obj|sample:NAME> [--height N] [--unit in|cm] [--up x|y|z] [--png out.png]\n       yarnfoundry-cli rounds <file.stl|file.obj|sample:NAME> [--height N] [--unit in|cm] [--up x|y|z] [--sts N] [--rows N] [--png out.png]\n       yarnfoundry-cli pattern <file.stl|file.obj|sample:NAME> [--height N] [--unit in|cm] [--up x|y|z] [--sts N] [--rows N] [--uk] [--weight worsted]\n       yarnfoundry-cli text \"<words>\" <out.yarnfoundry> [--rows N] [--width N] [--spacing N] [--weight regular|bold|heavy] [--min-rows N] [--outline]";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -21,6 +21,7 @@ fn main() {
         Some("instructions") => instructions(&args[1..]),
         Some("model") => model(&args[1..]),
         Some("rounds") => rounds(&args[1..]),
+        Some("pattern") => pattern(&args[1..]),
         Some(other) => Err(format!("unknown command: {other}\n{USAGE}")),
     };
     if let Err(e) = result {
@@ -224,5 +225,40 @@ fn rounds(args: &[String]) -> Result<(), String> {
         std::fs::write(out, png).map_err(|e| format!("{out}: {e}"))?;
         println!("picture -> {out}");
     }
+    Ok(())
+}
+
+/// `pattern`: the written amigurumi pattern for the whole model as one part.
+fn pattern(args: &[String]) -> Result<(), String> {
+    use yarnfoundry_core::{Terms, YarnWeight};
+    let (fitted, _) = load_fitted(args)?;
+    let sts = flag(args, "--sts", 20)?;
+    let rows = flag(args, "--rows", 20)?;
+    let gauge = Gauge::new(f64::from(sts), f64::from(rows), 4.0, Unit::Inches).map_err(|e| e.to_string())?;
+    let rounds = yarnfoundry_core::rounds_for_mesh(&fitted, &gauge).map_err(|e| e.to_string())?;
+    let terms = if args.iter().any(|a| a == "--uk") { Terms::Uk } else { Terms::Us };
+    let weight = match args.iter().position(|a| a == "--weight").and_then(|i| args.get(i + 1)).map(String::as_str) {
+        None | Some("worsted") => YarnWeight::Worsted,
+        Some("lace") => YarnWeight::Lace,
+        Some("fingering") => YarnWeight::Fingering,
+        Some("sport") => YarnWeight::Sport,
+        Some("dk") => YarnWeight::DK,
+        Some("aran") => YarnWeight::Aran,
+        Some("bulky") => YarnWeight::Bulky,
+        Some("super-bulky") => YarnWeight::SuperBulky,
+        Some(_) => return Err("--weight must be lace, fingering, sport, dk, worsted, aran, bulky or super-bulky".to_string()),
+    };
+    let eyes = yarnfoundry_core::pattern::default_eyes(&rounds);
+    let p = yarnfoundry_core::part_pattern("Body", &rounds, true, terms, weight, eyes.as_ref());
+    for r in &p.rounds {
+        println!("{}", r.text);
+    }
+    for l in &p.finishing {
+        println!("{l}");
+    }
+    for n in &p.notes {
+        println!("Note: {n}");
+    }
+    println!("{} rounds, {} stitches, about {:.0} yards of {} (an estimate)", p.rounds.len(), p.total_stitches, p.yards.ceil(), weight.label());
     Ok(())
 }
