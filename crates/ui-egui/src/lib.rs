@@ -1,5 +1,8 @@
 //! YarnFoundry UI: a thin egui front end. Panels read core state; colours come from [`theme`].
 
+pub mod figure3d;
+pub mod figure_wizard;
+
 pub mod theme {
     use egui::Color32;
 
@@ -36,6 +39,8 @@ pub struct YarnFoundryApp {
     load_picture: Option<String>,
     /// False in the browser: no file paths, only a file chooser.
     can_read_paths: bool,
+    /// The 3D figure wizard, when it is open (instead of the chart setup).
+    wizard: Option<figure_wizard::FigureWizard>,
     /// The "Feedback / report a problem" panel is showing.
     feedback_open: bool,
 }
@@ -88,8 +93,36 @@ impl YarnFoundryApp {
             save_project: false,
             load_picture: None,
             can_read_paths: true,
+            wizard: None,
             feedback_open: false,
         }
+    }
+
+    /// An app with the 3D figure wizard open on a loaded model (for demos and screenshots), at `step` of 5.
+    pub fn with_model(raw: yarnfoundry_core::Mesh, name: &str, height_in: f64, step: usize) -> Self {
+        Self { wizard: Some(figure_wizard::FigureWizard::with_model(raw, name, height_in, step)), ..Self::new() }
+    }
+
+    /// Opens the 3D figure wizard.
+    pub fn open_figure_wizard(&mut self) {
+        self.wizard = Some(figure_wizard::FigureWizard::new(self.can_read_paths));
+    }
+
+    /// A model file path the user asked to load (empty: open a file chooser); the host reads it and calls [`Self::use_model_bytes`].
+    pub fn take_load_model(&mut self) -> Option<String> {
+        self.wizard.as_mut().and_then(figure_wizard::FigureWizard::take_load_request)
+    }
+
+    /// Hands the wizard the bytes of a model file (STL or OBJ).
+    pub fn use_model_bytes(&mut self, name: &str, bytes: &[u8]) {
+        if let Some(w) = &mut self.wizard {
+            w.use_model_bytes(name, bytes);
+        }
+    }
+
+    /// The finished figure pattern as a PDF (file name and bytes), if the user asked for one.
+    pub fn take_figure_pdf(&mut self) -> Option<(String, Vec<u8>)> {
+        self.wizard.as_mut().and_then(figure_wizard::FigureWizard::take_pdf)
     }
 
     /// An app showing `chart` (opened from a file).
@@ -115,6 +148,9 @@ impl YarnFoundryApp {
     /// Whether the host can read a file by path (desktop). In the browser the picture step offers a file chooser instead.
     pub fn set_can_read_paths(&mut self, yes: bool) {
         self.can_read_paths = yes;
+        if let Some(w) = &mut self.wizard {
+            w.set_can_read_paths(yes);
+        }
     }
 
     pub fn step(&self) -> usize {
@@ -225,6 +261,9 @@ impl YarnFoundryApp {
 
     /// Shows a line of feedback (for example where a file was saved).
     pub fn set_message(&mut self, message: String) {
+        if let Some(w) = &mut self.wizard {
+            w.set_message(message.clone());
+        }
         self.message = message;
     }
 
@@ -240,7 +279,11 @@ impl YarnFoundryApp {
                 }
                 ui.separator();
                 let step = self.step.clamp(1, yarnfoundry_core::setup::STEPS);
-                ui.label(egui::RichText::new(format!("Step {step} of {}: {}", yarnfoundry_core::setup::STEPS, STEP_TITLES[step - 1])).strong());
+                if self.wizard.is_some() {
+                    ui.label(egui::RichText::new("3D figure: from model to crochet pattern").strong());
+                } else {
+                    ui.label(egui::RichText::new(format!("Step {step} of {}: {}", yarnfoundry_core::setup::STEPS, STEP_TITLES[step - 1])).strong());
+                }
                 if let (5, Some(chart)) = (self.step, &self.chart) {
                     let (w, h) = chart.finished_size();
                     let unit = if chart.gauge.unit == yarnfoundry_core::Unit::Cm { "cm" } else { "in" };
@@ -257,7 +300,11 @@ impl YarnFoundryApp {
                 }
             });
         });
-        if self.step == yarnfoundry_core::setup::STEPS && self.chart.is_some() {
+        if let Some(w) = &mut self.wizard {
+            if w.ui(ui) {
+                self.wizard = None;
+            }
+        } else if self.step == yarnfoundry_core::setup::STEPS && self.chart.is_some() {
             self.preview_ui(ui);
         } else {
             self.setup_ui(ui);
@@ -318,6 +365,10 @@ impl YarnFoundryApp {
 
     fn step1(&mut self, ui: &mut egui::Ui) {
         use yarnfoundry_core::{Construction, Craft};
+        if ui.button("Make a 3D figure (amigurumi from a 3D model) instead >").clicked() {
+            self.open_figure_wizard();
+        }
+        ui.separator();
         ui.label("I want to:");
         let mut craft = self.setup.craft;
         ui.horizontal(|ui| {

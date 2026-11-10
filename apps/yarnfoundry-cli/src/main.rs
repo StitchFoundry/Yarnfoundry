@@ -6,7 +6,7 @@
 
 use yarnfoundry_core::{Construction, Craft, Gauge, PaletteColor, PaletteSpec, Picture, PictureOptions, Technique, TextOptions, TextWeight, Unit};
 
-const USAGE: &str = "usage: yarnfoundry-cli [--version]\n       yarnfoundry-cli print <file.yarnfoundry> <out.pdf|out.svg|out.png> [--paper letter|a4] [--bw|--symbols] [--page N] [--dpi N] [--title T]\n       yarnfoundry-cli picture <image> <out.yarnfoundry> [--width N] [--colors K]\n       yarnfoundry-cli instructions <file.yarnfoundry>\n       yarnfoundry-cli model <file.stl|file.obj|sample:NAME> [--height N] [--unit in|cm] [--up x|y|z] [--png out.png]\n       yarnfoundry-cli text \"<words>\" <out.yarnfoundry> [--rows N] [--width N] [--spacing N] [--weight regular|bold|heavy] [--min-rows N] [--outline]";
+const USAGE: &str = "usage: yarnfoundry-cli [--version]\n       yarnfoundry-cli print <file.yarnfoundry> <out.pdf|out.svg|out.png> [--paper letter|a4] [--bw|--symbols] [--page N] [--dpi N] [--title T]\n       yarnfoundry-cli picture <image> <out.yarnfoundry> [--width N] [--colors K]\n       yarnfoundry-cli instructions <file.yarnfoundry>\n       yarnfoundry-cli model <file.stl|file.obj|sample:NAME> [--height N] [--unit in|cm] [--up x|y|z] [--png out.png]\n       yarnfoundry-cli rounds <file.stl|file.obj|sample:NAME> [--height N] [--unit in|cm] [--up x|y|z] [--sts N] [--rows N] [--png out.png]\n       yarnfoundry-cli pattern <file.stl|file.obj|sample:NAME> [--height N] [--unit in|cm] [--up x|y|z] [--sts N] [--rows N] [--uk] [--weight worsted] [--png out.png]\n       yarnfoundry-cli figure <file.stl|file.obj|sample:NAME> <out.pdf|out.png> [--height N] [--unit in|cm] [--up x|y|z] [--weight worsted] [--uk] [--paper letter|a4] [--title T] [--designer D] [--page N]\n       yarnfoundry-cli text \"<words>\" <out.yarnfoundry> [--rows N] [--width N] [--spacing N] [--weight regular|bold|heavy] [--min-rows N] [--outline]";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -20,6 +20,9 @@ fn main() {
         Some("print") => print(&args[1..]),
         Some("instructions") => instructions(&args[1..]),
         Some("model") => model(&args[1..]),
+        Some("rounds") => rounds(&args[1..]),
+        Some("pattern") => pattern(&args[1..]),
+        Some("figure") => figure(&args[1..]),
         Some(other) => Err(format!("unknown command: {other}\n{USAGE}")),
     };
     if let Err(e) = result {
@@ -131,18 +134,39 @@ fn print(args: &[String]) -> Result<(), String> {
 /// `model`: loads an STL/OBJ (or a built-in `sample:sphere|capsule|cone|snowman`), checks it, sets it upright at the
 /// finished height and says what it found. `--png` draws it.
 fn model(args: &[String]) -> Result<(), String> {
+    let Some(input) = args.first() else { return Err(USAGE.to_string()) };
+    let value = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1));
+    let (fitted, report) = load_fitted(args)?;
+    let (lo, hi) = fitted.bounds();
+    let _ = input;
+    println!(
+        "{} triangles, {} piece(s); {:.2} in tall, {:.2} x {:.2} in across",
+        report.triangles,
+        report.bodies,
+        hi[2] - lo[2],
+        hi[0] - lo[0],
+        hi[1] - lo[1]
+    );
+    for note in report.notes() {
+        println!("note: {note}");
+    }
+    if let Some(out) = value("--png") {
+        let page = yarnfoundry_render::view3d::mesh_page(&fitted, 600.0, 600.0, &yarnfoundry_render::view3d::Camera::default(), [196, 120, 96]);
+        let png = yarnfoundry_render::png::page_to_png(&page, 144).map_err(|e| e.to_string())?;
+        std::fs::write(out, png).map_err(|e| format!("{out}: {e}"))?;
+        println!("picture -> {out}");
+    }
+    Ok(())
+}
+
+/// Loads, checks and fits the model named by the first argument, using --height, --unit and --up.
+fn load_fitted(args: &[String]) -> Result<(yarnfoundry_core::Mesh, yarnfoundry_core::MeshReport), String> {
     use yarnfoundry_core::{Axis, models};
     let Some(input) = args.first() else { return Err(USAGE.to_string()) };
     let value = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1));
     let (mesh, report) = match input.strip_prefix("sample:") {
         Some(name) => {
-            let m = match name {
-                "sphere" => models::sphere(1.0),
-                "capsule" => models::capsule(1.0, 1.5),
-                "cone" => models::cone(1.0, 2.0),
-                "snowman" => models::snowman(),
-                _ => return Err("samples: sphere, capsule, cone, snowman".to_string()),
-            };
+            let m = models::sample(name).ok_or_else(|| format!("samples: {}", models::SAMPLES.join(", ")))?;
             m.checked().map_err(|e| e.to_string())?
         }
         None => yarnfoundry_core::import_model(&std::fs::read(input).map_err(|e| format!("{input}: {e}"))?).map_err(|e| e.to_string())?,
@@ -161,23 +185,219 @@ fn model(args: &[String]) -> Result<(), String> {
         Some(_) => return Err("--up must be x, y or z".to_string()),
     };
     let fitted = mesh.fitted(height, unit, up).map_err(|e| e.to_string())?;
-    let (lo, hi) = fitted.bounds();
-    println!(
-        "{} triangles, {} piece(s); {:.2} in tall, {:.2} x {:.2} in across",
-        report.triangles,
-        report.bodies,
-        hi[2] - lo[2],
-        hi[0] - lo[0],
-        hi[1] - lo[1]
-    );
-    for note in report.notes() {
-        println!("note: {note}");
+    Ok((fitted, report))
+}
+
+/// `rounds`: the stitch count of every round, bottom to top.
+fn rounds(args: &[String]) -> Result<(), String> {
+    let (fitted, _) = load_fitted(args)?;
+    let sts = flag(args, "--sts", 20)?;
+    let rows = flag(args, "--rows", 20)?;
+    let gauge = Gauge::new(f64::from(sts), f64::from(rows), 4.0, Unit::Inches).map_err(|e| e.to_string())?;
+    let rounds = yarnfoundry_core::rounds_for_mesh(&fitted, &gauge).map_err(|e| e.to_string())?;
+    for r in &rounds {
+        println!("Rnd {}: {} sts", r.index, r.stitches);
     }
-    if let Some(out) = value("--png") {
-        let page = yarnfoundry_render::view3d::mesh_page(&fitted, 600.0, 600.0, &yarnfoundry_render::view3d::Camera::default(), [196, 120, 96]);
+    println!("{} rounds, {} stitches", rounds.len(), rounds.iter().map(|r| r.stitches).sum::<u32>());
+    if let Some(out) = args.iter().position(|a| a == "--png").and_then(|i| args.get(i + 1)) {
+        use yarnfoundry_render::draw::{Anchor, Prim};
+        use yarnfoundry_render::view3d::{Camera, Frame, draw_mesh};
+        let mut page = yarnfoundry_render::draw::Page::new(720.0, 520.0);
+        page.rect(0.0, 0.0, 720.0, 520.0, Some([244, 241, 235]), None);
+        draw_mesh(&mut page, &fitted, &Camera::default(), Frame { x: 10.0, y: 40.0, w: 330.0, h: 460.0 }, [196, 120, 96]);
+        let text = |page: &mut yarnfoundry_render::draw::Page, x: f32, y: f32, size: f32, t: String, bold: bool| {
+            page.prims.push(Prim::Text { x, y, size, text: t, anchor: Anchor::Start, color: [40, 40, 40], bold });
+        };
+        text(&mut page, 20.0, 28.0, 18.0, "Rounds from the 3D model".to_string(), true);
+        let per_col = 20;
+        for (i, r) in rounds.iter().enumerate() {
+            let (col, row) = (i / per_col, i % per_col);
+            text(&mut page, 370.0 + col as f32 * 170.0, 62.0 + row as f32 * 22.0, 14.0, format!("Rnd {}: {} sts", r.index, r.stitches), false);
+        }
+        let total: u32 = rounds.iter().map(|r| r.stitches).sum();
+        text(&mut page, 370.0, 500.0, 14.0, format!("{} rounds, {total} stitches", rounds.len()), true);
         let png = yarnfoundry_render::png::page_to_png(&page, 144).map_err(|e| e.to_string())?;
         std::fs::write(out, png).map_err(|e| format!("{out}: {e}"))?;
         println!("picture -> {out}");
     }
+    Ok(())
+}
+
+/// `pattern`: the written amigurumi pattern for the whole model as one part.
+fn pattern(args: &[String]) -> Result<(), String> {
+    use yarnfoundry_core::{Terms, YarnWeight};
+    let (fitted, _) = load_fitted(args)?;
+    let sts = flag(args, "--sts", 20)?;
+    let rows = flag(args, "--rows", 20)?;
+    let gauge = Gauge::new(f64::from(sts), f64::from(rows), 4.0, Unit::Inches).map_err(|e| e.to_string())?;
+    let rounds = yarnfoundry_core::rounds_for_mesh(&fitted, &gauge).map_err(|e| e.to_string())?;
+    let terms = if args.iter().any(|a| a == "--uk") { Terms::Uk } else { Terms::Us };
+    let weight = match args.iter().position(|a| a == "--weight").and_then(|i| args.get(i + 1)).map(String::as_str) {
+        None | Some("worsted") => YarnWeight::Worsted,
+        Some("lace") => YarnWeight::Lace,
+        Some("fingering") => YarnWeight::Fingering,
+        Some("sport") => YarnWeight::Sport,
+        Some("dk") => YarnWeight::DK,
+        Some("aran") => YarnWeight::Aran,
+        Some("bulky") => YarnWeight::Bulky,
+        Some("super-bulky") => YarnWeight::SuperBulky,
+        Some(_) => return Err("--weight must be lace, fingering, sport, dk, worsted, aran, bulky or super-bulky".to_string()),
+    };
+    let figure = yarnfoundry_core::split_figure(&fitted, &gauge, &yarnfoundry_core::ManualSplits::default()).map_err(|e| e.to_string())?;
+    let _ = rounds;
+    let pats = figure.patterns(terms, weight, &gauge, None);
+    let (mut rounds_n, mut stitches, mut yards) = (0, 0, 0.0);
+    for p in &pats {
+        println!("== {} ==", p.name);
+        for r in &p.rounds {
+            println!("{}", r.text);
+        }
+        for l in &p.finishing {
+            println!("{l}");
+        }
+        for n in &p.notes {
+            println!("Note: {n}");
+        }
+        println!();
+        rounds_n += p.rounds.len();
+        stitches += p.total_stitches;
+        yards += p.yards;
+    }
+    if let Some(out) = args.iter().position(|a| a == "--png").and_then(|i| args.get(i + 1)) {
+        use yarnfoundry_render::view3d::{Camera, Frame, draw_figure};
+        let mut page = yarnfoundry_render::draw::Page::new(700.0, 520.0);
+        page.rect(0.0, 0.0, 700.0, 520.0, Some([244, 241, 235]), None);
+        draw_figure(&mut page, &figure, &Camera::default(), Frame { x: 10.0, y: 40.0, w: 400.0, h: 470.0 }, None);
+        let label = |page: &mut yarnfoundry_render::draw::Page, y: f32, t: String, bold: bool| {
+            page.prims.push(yarnfoundry_render::draw::Prim::Text {
+                x: 430.0,
+                y,
+                size: 15.0,
+                text: t,
+                anchor: yarnfoundry_render::draw::Anchor::Start,
+                color: [40, 40, 40],
+                bold,
+            });
+        };
+        label(&mut page, 28.0, "Parts and rounds from the 3D model".to_string(), true);
+        for (i, (part, pat)) in figure.parts.iter().zip(&pats).enumerate() {
+            let y = 70.0 + i as f32 * 26.0;
+            let col = yarnfoundry_render::view3d::PART_COLOURS[i % 8];
+            page.rect(430.0, y - 12.0, 14.0, 14.0, Some(col), None);
+            page.prims.push(yarnfoundry_render::draw::Prim::Text {
+                x: 452.0,
+                y,
+                size: 14.0,
+                text: format!("{}: {} rounds, {} sts", part.name, pat.rounds.len(), pat.total_stitches),
+                anchor: yarnfoundry_render::draw::Anchor::Start,
+                color: [40, 40, 40],
+                bold: false,
+            });
+        }
+        let mut y = 70.0 + (figure.parts.len() as f32 + 1.0) * 26.0;
+        for n in figure.assembly_notes() {
+            let mut line = String::new();
+            for word in n.split(' ') {
+                if line.len() + word.len() > 38 {
+                    page.prims.push(yarnfoundry_render::draw::Prim::Text {
+                        x: 430.0,
+                        y,
+                        size: 12.0,
+                        text: std::mem::take(&mut line),
+                        anchor: yarnfoundry_render::draw::Anchor::Start,
+                        color: [40, 40, 40],
+                        bold: false,
+                    });
+                    y += 17.0;
+                }
+                line.push_str(word);
+                line.push(' ');
+            }
+            page.prims.push(yarnfoundry_render::draw::Prim::Text {
+                x: 430.0,
+                y,
+                size: 12.0,
+                text: line,
+                anchor: yarnfoundry_render::draw::Anchor::Start,
+                color: [40, 40, 40],
+                bold: false,
+            });
+            y += 24.0;
+        }
+        let png = yarnfoundry_render::png::page_to_png(&page, 144).map_err(|e| e.to_string())?;
+        std::fs::write(out, png).map_err(|e| format!("{out}: {e}"))?;
+        println!("picture -> {out}");
+    }
+    if !figure.assembly_notes().is_empty() {
+        println!("== Assembly ==");
+        for n in figure.assembly_notes() {
+            println!("{n}");
+        }
+        println!();
+    }
+    for n in &figure.notes {
+        println!("Note: {n}");
+    }
+    println!("{} part(s), {rounds_n} rounds, {stitches} stitches, about {:.0} yards of {} (an estimate)", pats.len(), yards.ceil(), weight.label());
+    Ok(())
+}
+
+/// `figure`: the printable amigurumi pattern (PDF, or one page as PNG with `--page N`, default 1 = the cover).
+fn figure(args: &[String]) -> Result<(), String> {
+    use yarnfoundry_core::{ManualSplits, Terms, YarnWeight};
+    use yarnfoundry_render::{
+        Paper,
+        booklet::{BookletInput, booklet_pages},
+    };
+    let Some(output) = args.get(1) else { return Err(USAGE.to_string()) };
+    let value = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1));
+    let (fitted, _) = load_fitted(args)?;
+    let weight = match value("--weight").map(String::as_str) {
+        None | Some("worsted") => YarnWeight::Worsted,
+        Some("lace") => YarnWeight::Lace,
+        Some("fingering") => YarnWeight::Fingering,
+        Some("sport") => YarnWeight::Sport,
+        Some("dk") => YarnWeight::DK,
+        Some("aran") => YarnWeight::Aran,
+        Some("bulky") => YarnWeight::Bulky,
+        Some("super-bulky") => YarnWeight::SuperBulky,
+        Some(_) => return Err("--weight must be lace, fingering, sport, dk, worsted, aran, bulky or super-bulky".to_string()),
+    };
+    let (s, r) = weight.amigurumi_gauge();
+    let gauge = Gauge::new(s, r, 4.0, Unit::Inches).map_err(|e| e.to_string())?;
+    let terms = if args.iter().any(|a| a == "--uk") { Terms::Uk } else { Terms::Us };
+    let paper = match value("--paper") {
+        Some(p) => Paper::parse(p).ok_or("--paper must be letter or a4")?,
+        None => Paper::Letter,
+    };
+    let figure = yarnfoundry_core::split_figure(&fitted, &gauge, &ManualSplits::default()).map_err(|e| e.to_string())?;
+    let patterns = figure.patterns(terms, weight, &gauge, None);
+    let height_in = fitted.bounds().1[2];
+    let title = value("--title").cloned().unwrap_or_else(|| "Amigurumi figure".to_string());
+    let designer = value("--designer").cloned().unwrap_or_default();
+    let pages = booklet_pages(&BookletInput {
+        title: &title,
+        designer: &designer,
+        paper,
+        mesh: &fitted,
+        figure: &figure,
+        patterns: &patterns,
+        terms,
+        weight,
+        gauge: &gauge,
+        height_in,
+    });
+    let ext = std::path::Path::new(output).extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    let bytes = match ext.as_str() {
+        "pdf" => yarnfoundry_render::pdf::to_pdf(&pages, &title),
+        "png" => {
+            let n = flag(args, "--page", 1)? as usize;
+            let page = pages.get(n.saturating_sub(1)).ok_or_else(|| format!("page {n} does not exist (the pattern has {} pages)", pages.len()))?;
+            yarnfoundry_render::png::page_to_png(page, 110).map_err(|e| e.to_string())?
+        }
+        _ => return Err("the output file must end in .pdf or .png".to_string()),
+    };
+    std::fs::write(output, bytes).map_err(|e| format!("{output}: {e}"))?;
+    println!("{} parts, {} pages -> {output}", figure.parts.len(), pages.len());
     Ok(())
 }

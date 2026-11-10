@@ -30,3 +30,10 @@ Making-of log for the YarnFoundry video. Times are UTC.
 | 2026-11-09 15:49 | The web build running in a browser (Chromium): setup typed through to the KING CASHEW chart preview with print buttons | PR for #9 (YF-8) | docs/build-story/20261109-1549-issue-9-web.png |
 | 2026-11-09 15:55 | PR for #10 (dual licence MIT OR Apache-2.0) opened, labelled needs-review, not merged (no visible change) | PR for #10 | |
 | 2026-11-09 17:37 | First 3D model loaded: the built-in snowman (two balls, one closed surface) checked, set upright at 7 in and drawn | PR for #23 (YF-11) | docs/build-story/20261109-1737-issue-23.png |
+| 2026-11-09 17:47 | First sphere pattern: a 2.3 in ball becomes 17 rounds, 6, 12, 18, 23, 28, 31, 34, 36 and back down to 6 | PR for #24 (YF-12) | docs/build-story/20261109-1747-issue-24.png |
+| 2026-11-09 17:56 | Snowman split into parts: body (27 rounds, red) and head (16 rounds, blue), rounds drawn as rings with every 5th lighter, assembly note | PR for #26 (YF-14) | docs/build-story/20261109-1756-issue-26.png |
+| 2026-11-09 18:04 | 3D preview in the app, sphere: the original ball beside the crocheted rings (every 5th round lighter) | PR for #27 (YF-15) | docs/build-story/20261109-1804-issue-27-sphere.png |
+| 2026-11-09 18:04 | 3D preview in the app, snowman: original beside the crocheted result coloured by part (body red 27 rounds, head blue 16 rounds) | PR for #27 (YF-15) | docs/build-story/20261109-1804-issue-27-snowman.png |
+| 2026-11-09 18:08 | The 3D figure wizard, step 3 of 5 (Parts): the sample bear splits into 8 parts with neck cut switch and an add-a-cut tool | PR for #28 (YF-16) | docs/build-story/20261109-1808-issue-28-wizard-parts.png |
+| 2026-11-09 18:08 | The sample bear's printable pattern, cover page (preview render, rounds, stitches, yarn estimate, footer) | PR for #28 (YF-16) | docs/build-story/20261109-1808-issue-28-bear-cover.png |
+| 2026-11-09 18:08 | The sample bear's printable pattern, assembly page (numbered parts diagram and sewing notes) | PR for #28 (YF-16) | docs/build-story/20261109-1808-issue-28-bear-assembly.png |

@@ -1,6 +1,6 @@
 //! YarnFoundry desktop app: hosts the egui front end in an eframe window.
 //! `yarnfoundry --screenshot <out.png> [--project f] [--step N]` draws the window, saves it as a PNG and exits (needs a display;
-//! on a machine without one use `xvfb-run`). `yarnfoundry [file]` opens a `.yarnfoundry` project or turns a PNG/JPEG/WebP picture into a chart.
+//! on a machine without one use `xvfb-run`). `yarnfoundry --model sample:bear|<file.stl|file.obj> [--height N] [--wizard-step N]` opens the 3D figure wizard on a model. `yarnfoundry [file]` opens a `.yarnfoundry` project or turns a PNG/JPEG/WebP picture into a chart.
 
 use std::path::Path;
 
@@ -54,6 +54,22 @@ impl eframe::App for Host {
                 Err(e) => self.app.set_message(format!("{path}: {e}")),
             }
         }
+        if let Some(path) = self.app.take_load_model() {
+            match std::fs::read(&path) {
+                Ok(bytes) => {
+                    let name = Path::new(&path).file_stem().map_or_else(|| "model".to_string(), |s| s.to_string_lossy().into_owned());
+                    self.app.use_model_bytes(&name, &bytes);
+                }
+                Err(e) => self.app.set_message(format!("{path}: {e}")),
+            }
+        }
+        if let Some((name, bytes)) = self.app.take_figure_pdf() {
+            let message = match save_figure_pdf(&name, &bytes) {
+                Ok(path) => format!("Saved {path}"),
+                Err(e) => format!("Could not save: {e}"),
+            };
+            self.app.set_message(message);
+        }
         if self.app.take_save_project() {
             let message = match self.app.chart().map(|chart| save_project(chart, &self.stem)) {
                 Some(Ok(path)) => format!("Saved {path}"),
@@ -101,6 +117,19 @@ fn main() -> eframe::Result {
         .clone()
         .and_then(|p| Path::new(&p).file_stem().map(|s| s.to_string_lossy().into_owned()))
         .unwrap_or_else(|| "yarnfoundry-chart".to_string());
+    let figure_app = value_of("--model").and_then(|m| {
+        match figure_from(
+            &m,
+            value_of("--height").and_then(|h| h.parse().ok()).unwrap_or(8.0),
+            value_of("--wizard-step").and_then(|h| h.parse().ok()).unwrap_or(4),
+        ) {
+            Ok(app) => Some(app),
+            Err(e) => {
+                log::error!("could not open the model {m}: {e}");
+                None
+            }
+        }
+    });
     let chart = file.and_then(|path| match open(Path::new(&path)) {
         Ok(chart) => Some(chart),
         Err(e) => {
@@ -120,7 +149,9 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |_cc| {
             Ok(Box::new(Host {
-                app: demo_step.map_or_else(|| chart.map_or_else(YarnFoundryApp::new, YarnFoundryApp::with_chart), YarnFoundryApp::demo_at_step),
+                app: figure_app.unwrap_or_else(|| {
+                    demo_step.map_or_else(|| chart.map_or_else(YarnFoundryApp::new, YarnFoundryApp::with_chart), YarnFoundryApp::demo_at_step)
+                }),
                 stem,
                 screenshot: screenshot.map(|p| (p, 0)),
             }))
@@ -140,4 +171,29 @@ fn open(path: &Path) -> Result<Chart, String> {
     let rows = yarnfoundry_core::rows_for_width(&gauge, pic.width, pic.height, 60).map_err(|e| e.to_string())?;
     let opts = PictureOptions { width: 60, height: rows, palette: PaletteSpec::Auto(5), cleanup: 1 };
     yarnfoundry_core::chart_from_picture(&pic, &opts, Craft::Knit, Technique::Intarsia, Construction::Flat, gauge).map_err(|e| e.to_string())
+}
+
+/// Opens the figure wizard on a model (`sample:NAME` or an STL/OBJ path) at `height` inches, at wizard step `step`.
+fn figure_from(name: &str, height: f64, step: usize) -> Result<YarnFoundryApp, String> {
+    let (mesh, label) = match name.strip_prefix("sample:") {
+        Some(sample) => (
+            yarnfoundry_core::models::sample(sample)
+                .ok_or_else(|| format!("samples: {}", yarnfoundry_core::models::SAMPLES.join(", ")))?
+                .checked()
+                .map_err(|e| e.to_string())?
+                .0,
+            sample.to_string(),
+        ),
+        None => (
+            yarnfoundry_core::import_model(&std::fs::read(name).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?.0,
+            Path::new(name).file_stem().map_or_else(|| "model".to_string(), |s| s.to_string_lossy().into_owned()),
+        ),
+    };
+    Ok(YarnFoundryApp::with_model(mesh, &label, height, step))
+}
+
+/// Writes a figure PDF next to where the app was started; returns the file name.
+fn save_figure_pdf(name: &str, bytes: &[u8]) -> Result<String, String> {
+    std::fs::write(name, bytes).map_err(|e| format!("{name}: {e}"))?;
+    Ok(name.to_string())
 }

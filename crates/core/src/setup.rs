@@ -46,6 +46,43 @@ impl YarnWeight {
         }
     }
 
+    /// Inches of yarn one single crochet uses at amigurumi (tight) gauge. A rough factor per weight for yardage
+    /// estimates; a swatch and a weighed ball always beat it.
+    pub fn inches_per_stitch(self) -> f64 {
+        match self {
+            Self::Lace => 0.45,
+            Self::Fingering => 0.55,
+            Self::Sport => 0.65,
+            Self::DK => 0.75,
+            Self::Worsted => 0.9,
+            Self::Aran => 1.1,
+            Self::Bulky => 1.4,
+            Self::SuperBulky => 2.0,
+        }
+    }
+
+    /// A crochet hook that suits this weight for amigurumi (a tight fabric): (US size, metric mm).
+    /// Round figures from common public hook charts; a swatch always beats them.
+    pub fn amigurumi_hook(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Lace => ("7 steel", "1.5 mm"),
+            Self::Fingering => ("B-1", "2.25 mm"),
+            Self::Sport => ("C-2", "2.75 mm"),
+            Self::DK => ("D-3", "3.25 mm"),
+            Self::Worsted => ("E-4", "3.5 mm"),
+            Self::Aran => ("G-6", "4.0 mm"),
+            Self::Bulky => ("H-8", "5.0 mm"),
+            Self::SuperBulky => ("J-10", "6.0 mm"),
+        }
+    }
+
+    /// Amigurumi gauge: single crochet worked tighter than the plain crochet table (about 25% more stitches),
+    /// as (stitches, rows) over 4 inches.
+    pub fn amigurumi_gauge(self) -> (f64, f64) {
+        let (s, r) = self.default_gauge(Craft::Crochet);
+        ((s * 1.25).round(), (r * 1.25).round())
+    }
+
     /// Typical gauge over 4 inches (10 cm): (stitches, rows). Knit stockinette, crochet single crochet.
     /// Round figures from common public yarn-weight tables; a swatch always beats them.
     pub fn default_gauge(self, craft: Craft) -> (f64, f64) {
