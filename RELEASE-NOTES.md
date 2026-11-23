@@ -1,6 +1,4 @@
-# YarnFoundry 0.1.0 (draft release notes)
-
-DRAFT: this version is not tagged or published. Bruce decides when.
+# YarnFoundry 0.1.0 release notes
 
 YarnFoundry is a free, open-source app for knitters and crocheters. You tell it what you want to make, and it gives you
 a colorwork chart, written instructions row by row, and a chart you can print at its real size. No account, no sign-in,
@@ -20,7 +18,7 @@ nothing leaves your computer.
 - **A printable chart at true size.** Letter or A4, in colour or in black and white with a different symbol for each
   colour. Big charts are split over several pages with a page map. A 1-inch bar on each page lets you check your printer.
 - **Saves your work** as a `.yarnfoundry` file you can open again.
-- **Use it in the browser** (when the project's web page is switched on) or as a desktop app.
+- **Use it in the browser** at https://app.yarnfoundry.app, or as a desktop app.
 
 ## What it does not do yet
 
@@ -34,7 +32,7 @@ nothing leaves your computer.
 
 ## Licence
 
-MIT today. A change to "MIT or Apache-2.0" is proposed in issue #10 and is Bruce's call.
+MIT OR Apache-2.0, at your option.
 
 ## For testers
 
