@@ -12,6 +12,7 @@ pub mod pattern;
 pub mod picture;
 pub mod rounds;
 pub mod setup;
+pub mod share;
 pub mod slice;
 pub mod technique;
 pub mod text;
