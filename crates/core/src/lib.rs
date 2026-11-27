@@ -2,6 +2,7 @@
 
 pub mod chart;
 pub mod color;
+pub mod events;
 pub mod file;
 pub mod gauge;
 pub mod instructions;
