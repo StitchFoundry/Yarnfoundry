@@ -5,6 +5,7 @@ pub mod color;
 pub mod file;
 pub mod gauge;
 pub mod instructions;
+pub mod link;
 pub mod mesh;
 pub mod models;
 pub mod parts;
