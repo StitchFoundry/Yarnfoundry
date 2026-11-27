@@ -1,0 +1,210 @@
+# Release pipeline (first slice of issue #47): every push to `release` builds the Windows installer
+# and Linux and macOS packages and creates or updates the DRAFT GitHub Release "YarnFoundry v<version>"
+# with SHA256SUMS.txt. It never publishes: Bruce asks for the release, then Crew Chief publishes it.
+#
+# This slice is UNSIGNED and has no `release` environment yet (signing is added once the org's signing
+# secrets are wired to this repository; this workflow reads no secret). Linux AppImage and .deb and the
+# macOS .dmg come in later slices; today Linux is a .tar.gz and macOS a universal .zip.
+#
+# Dry run: a pull request that changes this file, or a workflow_dispatch, builds everything and uploads
+# the artifacts, and the release job is skipped (no release is drafted).
+name: Release
+
+on:
+  push:
+    branches: [release]
+  pull_request:
+    paths: [".github/workflows/release.yml"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version override for a test run, e.g. 0.2.0-rc.1 (empty: Cargo.toml)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  # Never cancel a run mid-upload; a newer push waits its turn.
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+  INPUT_VERSION: ${{ inputs.version }}
+
+jobs:
+  version:
+    name: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: v
+        name: Resolve version
+        run: |
+          cargo_v="$(grep -m1 -E '^version[[:space:]]*=' Cargo.toml | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')"
+          v="${INPUT_VERSION#v}"
+          v="${v:-$cargo_v}"
+          if ! printf '%s' "$v" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+            echo "::error::'$v' is not a version like 1.2.3 or 1.2.3-rc.1"
+            exit 1
+          fi
+          case "$v" in *-*) pre=true ;; *) pre=false ;; esac
+          printf 'version=%s\nprerelease=%s\n' "$v" "$pre" >>"$GITHUB_OUTPUT"
+          echo "### YarnFoundry v$v (\`${GITHUB_SHA::9}\`)" >>"$GITHUB_STEP_SUMMARY"
+
+  windows:
+    name: Windows installer
+    needs: version
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Inno Setup 6
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc.exe -ErrorAction SilentlyContinue) -and -not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+      - name: Build the installer (unsigned)
+        shell: pwsh
+        run: ./packaging/windows/build.ps1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows
+          path: dist/YarnFoundry-*-windows-setup.exe
+          if-no-files-found: error
+
+  linux:
+    name: Linux x86_64
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Linux libraries
+        run: |
+          # Same mirror fallback as ci.yml (Ubuntu-host DNS outage 2026-11-11).
+          if [ -f /etc/apt/apt-mirrors.txt ] && [ "$(dpkg --print-architecture)" = amd64 ]; then
+            printf "http://mirrors.kernel.org/ubuntu/\nhttp://azure.archive.ubuntu.com/ubuntu/\n" | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          fi
+          for i in 1 2 3; do sudo apt-get -o Acquire::Retries=3 update && break; sleep 20; done
+          sudo apt-get -o Acquire::Retries=3 install -y libxkbcommon-x11-0 libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
+      - name: Build and package
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          cargo build --release --locked -p yarnfoundry
+          name="yarnfoundry-${VERSION}-linux-x86_64"
+          mkdir -p "dist/$name"
+          cp target/release/yarnfoundry LICENSE-MIT LICENSE-APACHE NOTICE README.md "dist/$name/"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          rm -rf "dist/$name"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  macos:
+    name: macOS universal
+    needs: version
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Build both architectures and join them
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          cargo build --release --locked -p yarnfoundry --target aarch64-apple-darwin
+          cargo build --release --locked -p yarnfoundry --target x86_64-apple-darwin
+          name="yarnfoundry-${VERSION}-macos-universal"
+          mkdir -p "dist/$name"
+          lipo -create -output "dist/$name/yarnfoundry" \
+            target/aarch64-apple-darwin/release/yarnfoundry target/x86_64-apple-darwin/release/yarnfoundry
+          cp LICENSE-MIT LICENSE-APACHE NOTICE README.md "dist/$name/"
+          (cd dist && zip -qr "$name.zip" "$name")
+          rm -rf "dist/$name"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    name: draft release
+    needs: [version, windows, linux, macos]
+    # Only a push to `release` drafts anything; pull requests and manual runs are dry runs.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Create or update the DRAFT release (never publishes)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          title="YarnFoundry v$VERSION"
+          cd assets
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          cd ..
+          notes=()
+          if [ -f "docs/release-notes/v$VERSION.md" ]; then notes=(--notes-file "docs/release-notes/v$VERSION.md"); else notes=(--generate-notes); fi
+          pre=()
+          [ "$PRERELEASE" = true ] && pre=(--prerelease)
+          if draft="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [ "$draft" != true ]; then
+              echo "::error::Release $tag is already published; this workflow never edits a published release."
+              exit 1
+            fi
+            gh release view "$tag" --json assets --jq '.assets[].name' | while read -r asset; do
+              gh release delete-asset "$tag" "$asset" --yes
+            done
+            gh release edit "$tag" --draft --title "$title" --target "$GITHUB_SHA" --prerelease="$PRERELEASE"
+            gh release upload "$tag" --clobber assets/*
+          else
+            gh release create "$tag" --draft --title "$title" --target "$GITHUB_SHA" "${notes[@]}" "${pre[@]}" assets/*
+          fi
+          echo "Draft release $tag is ready. Bruce asks for the release; Crew Chief publishes it."
