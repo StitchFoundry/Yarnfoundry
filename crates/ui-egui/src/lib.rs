@@ -32,6 +32,8 @@ pub struct YarnFoundryApp {
     opened_from_file: bool,
     picture_path: String,
     width_text: f64,
+    /// Own swatch (stitches, rows) over the gauge measure, and the stitch repeat, for the rescale helper.
+    swatch: (f64, f64, u32),
     error: String,
     message: String,
     export: Option<PrintRequest>,
@@ -87,6 +89,7 @@ impl YarnFoundryApp {
             opened_from_file: false,
             picture_path: String::new(),
             width_text: 8.0,
+            swatch: (20.0, 28.0, 1),
             error: String::new(),
             message: String::new(),
             export: None,
@@ -492,9 +495,44 @@ impl YarnFoundryApp {
             let stitches = self.setup.stitches(&g).map_or_else(|_| "?".to_string(), |n| n.to_string());
             ui.label(format!("Gauge used: {} stitches and {} rows over {} {unit}. Chart width: {stitches} stitches.", g.stitches, g.rows, g.measure));
         }
+        if let Ok(g) = self.setup.gauge() {
+            self.swatch_section(ui, &g, unit);
+        }
         if let Size::Width(w) = self.setup.size {
             self.width_text = w;
         }
+    }
+
+    /// Rescale the chart's counts to the maker's own swatch gauge.
+    fn swatch_section(&mut self, ui: &mut egui::Ui, g: &yarnfoundry_core::Gauge, unit: &str) {
+        let Ok(width) = self.setup.stitches(g) else { return };
+        let rows = (f64::from(width) * g.stitch_aspect()).round().max(1.0) as u32;
+        let (mut st, mut rw, mut rep) = self.swatch;
+        ui.collapsing("My swatch is different", |ui| {
+            ui.horizontal(|ui| {
+                ui.add(egui::DragValue::new(&mut st).range(1.0..=60.0).speed(0.1));
+                ui.label("stitches and");
+                ui.add(egui::DragValue::new(&mut rw).range(1.0..=80.0).speed(0.1));
+                ui.label(format!("rows over {} {unit} in my swatch. Stitch repeat:", g.measure));
+                ui.add(egui::DragValue::new(&mut rep).range(1..=200));
+            });
+            let own = yarnfoundry_core::Gauge::new(st, rw, g.measure, g.unit);
+            match own.and_then(|own| yarnfoundry_core::adjust_counts(g, &own, width, rows, rep)) {
+                Ok(a) => {
+                    ui.label(format!(
+                        "Cast on {} stitches (exactly {:.1}, rounded to the repeat) and work {} rows.",
+                        a.stitches, a.exact_stitches, a.rows
+                    ));
+                    if a.rounding_warning {
+                        ui.colored_label(egui::Color32::from_rgb(180, 90, 0), "Rounding to the repeat moves the width by more than one stitch.");
+                    }
+                }
+                Err(e) => {
+                    ui.label(e.to_string());
+                }
+            }
+        });
+        self.swatch = (st, rw, rep);
     }
 
     fn step4(&mut self, ui: &mut egui::Ui) {

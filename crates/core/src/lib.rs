@@ -18,7 +18,7 @@ pub mod text;
 
 pub use chart::{Chart, ChartError, Construction, Craft, PaletteColor, Technique};
 pub use file::{FileError, from_json, to_json};
-pub use gauge::{Gauge, GaugeError, Unit};
+pub use gauge::{Adjusted, Gauge, GaugeError, Unit, adjust_counts};
 pub use instructions::{ColourTotal, Instructions, RowInstruction, Side, colour_label, instructions};
 pub use mesh::{Axis, Mesh, MeshError, MeshReport, import as import_model};
 pub use parts::{Attach, Figure, ManualSplits, Part, split_figure};

@@ -97,9 +97,63 @@ impl Gauge {
     }
 }
 
+/// Stitch and row counts re-worked from a pattern's gauge to a maker's own gauge.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Adjusted {
+    /// Stitches before rounding to the repeat.
+    pub exact_stitches: f64,
+    /// Stitches rounded to the nearest whole repeat (at least one repeat).
+    pub stitches: u32,
+    /// Rows, rounded to the nearest whole row (at least 1).
+    pub rows: u32,
+    /// True when rounding to the repeat moved the count by more than one stitch.
+    pub rounding_warning: bool,
+}
+
+/// Counts to work so a piece comes out the pattern's size at `own` gauge.
+/// `stitches` and `rows` are the pattern's counts at `pattern` gauge; `repeat` is the stitch repeat (0 is treated as 1).
+pub fn adjust_counts(pattern: &Gauge, own: &Gauge, stitches: u32, rows: u32, repeat: u32) -> Result<Adjusted, GaugeError> {
+    pattern.validate()?;
+    own.validate()?;
+    let repeat = repeat.max(1);
+    let exact = f64::from(stitches) * own.stitches_per_inch() / pattern.stitches_per_inch();
+    let exact_rows = f64::from(rows) * own.rows_per_inch() / pattern.rows_per_inch();
+    let r = f64::from(repeat);
+    let rounded = ((exact / r).round() * r).max(r);
+    let rows = exact_rows.round().max(1.0);
+    if rounded > f64::from(MAX_SIDE) || rows > f64::from(MAX_SIDE) {
+        return Err(GaugeError::TooLarge);
+    }
+    Ok(Adjusted { exact_stitches: exact, stitches: rounded as u32, rows: rows as u32, rounding_warning: (rounded - exact).abs() > 1.0 })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn looser_own_gauge_means_fewer_counts_rounded_to_the_repeat() {
+        let pat = Gauge::new(20.0, 28.0, 4.0, Unit::Inches).unwrap();
+        let own = Gauge::new(18.0, 26.0, 4.0, Unit::Inches).unwrap();
+        // 80 sts * 18/20 = 72 exactly; 56 rows * 26/28 = 52.
+        let a = adjust_counts(&pat, &own, 80, 56, 12).unwrap();
+        assert_eq!((a.stitches, a.rows), (72, 52));
+        assert!(!a.rounding_warning);
+        // 85 sts -> 76.5 exact, nearest repeat of 12 is 72: off by 4.5, so warn.
+        let b = adjust_counts(&pat, &own, 85, 56, 12).unwrap();
+        assert_eq!(b.stitches, 72);
+        assert!(b.rounding_warning);
+    }
+
+    #[test]
+    fn units_mix_and_bad_input_is_an_error() {
+        let pat = Gauge::new(20.0, 28.0, 4.0, Unit::Inches).unwrap();
+        let own = Gauge::new(20.0, 28.0, 10.16, Unit::Cm).unwrap();
+        assert_eq!(adjust_counts(&pat, &own, 40, 56, 0).map(|a| (a.stitches, a.rows)), Ok((40, 56)));
+        let bad = Gauge { stitches: f64::NAN, ..own };
+        assert_eq!(adjust_counts(&pat, &bad, 40, 56, 1), Err(GaugeError::InvalidGauge));
+        assert_eq!(adjust_counts(&pat, &own, 40, 56, 1_000_000), Err(GaugeError::TooLarge));
+    }
 
     #[test]
     fn gauge_20_by_28_per_4_inches_for_8_by_8_inches_is_40_by_56() {
