@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=YarnFoundry
+Comment=Colorwork charts for knitting and crochet
+Exec=yarnfoundry
+Icon=yarnfoundry
+Terminal=false
+Categories=Graphics;Utility;
