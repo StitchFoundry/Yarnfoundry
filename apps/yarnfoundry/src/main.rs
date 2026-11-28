@@ -18,6 +18,9 @@ struct Host {
 /// Frames to draw before the screenshot, so the layout has settled.
 const SCREENSHOT_AFTER_FRAMES: u32 = 6;
 
+/// Where the follow-along position is kept, next to where the app was started.
+const PROGRESS_FILE: &str = "yarnfoundry-progress.txt";
+
 fn write_png(image: &egui::ColorImage, path: &str) -> Result<(), String> {
     use image::ImageEncoder;
     let rgba: Vec<u8> = image.pixels.iter().flat_map(|p| p.to_array()).collect();
@@ -69,6 +72,11 @@ impl eframe::App for Host {
                 Err(e) => format!("Could not save: {e}"),
             };
             self.app.set_message(message);
+        }
+        if let Some(text) = self.app.take_progress_text()
+            && let Err(e) = std::fs::write(PROGRESS_FILE, text)
+        {
+            log::warn!("could not save your place: {e}");
         }
         if self.app.take_save_project() {
             let message = match self.app.chart().map(|chart| save_project(chart, &self.stem)) {
@@ -148,13 +156,13 @@ fn main() -> eframe::Result {
         yarnfoundry_core::APP_NAME,
         options,
         Box::new(move |_cc| {
-            Ok(Box::new(Host {
-                app: figure_app.unwrap_or_else(|| {
-                    demo_step.map_or_else(|| chart.map_or_else(YarnFoundryApp::new, YarnFoundryApp::with_chart), YarnFoundryApp::demo_at_step)
-                }),
-                stem,
-                screenshot: screenshot.map(|p| (p, 0)),
-            }))
+            let mut app = figure_app.unwrap_or_else(|| {
+                demo_step.map_or_else(|| chart.map_or_else(YarnFoundryApp::new, YarnFoundryApp::with_chart), YarnFoundryApp::demo_at_step)
+            });
+            if let Ok(text) = std::fs::read_to_string(PROGRESS_FILE) {
+                app.set_progress_text(&text);
+            }
+            Ok(Box::new(Host { app, stem, screenshot: screenshot.map(|p| (p, 0)) }))
         }),
     )
 }

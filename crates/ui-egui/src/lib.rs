@@ -10,6 +10,7 @@ pub mod theme {
     pub const CANVAS_BG: Color32 = Color32::from_rgb(250, 247, 242);
     pub const GRID_LINE: Color32 = Color32::from_rgb(214, 207, 196);
     pub const GRID_LINE_MAJOR: Color32 = Color32::from_rgb(170, 160, 146);
+    pub const FOLLOW_BG: Color32 = Color32::from_rgb(255, 230, 150);
     pub const HINT: Color32 = Color32::from_rgb(120, 112, 100);
 }
 
@@ -43,6 +44,9 @@ pub struct YarnFoundryApp {
     wizard: Option<figure_wizard::FigureWizard>,
     /// The "Feedback / report a problem" panel is showing.
     feedback_open: bool,
+    /// Follow-along: the saved row for each pattern, and whether it changed since the host last stored it.
+    progress: yarnfoundry_core::follow::Progress,
+    progress_changed: bool,
 }
 
 impl Default for YarnFoundryApp {
@@ -95,7 +99,19 @@ impl YarnFoundryApp {
             can_read_paths: true,
             wizard: None,
             feedback_open: false,
+            progress: yarnfoundry_core::follow::Progress::default(),
+            progress_changed: false,
         }
+    }
+
+    /// Loads the follow-along positions the host stored earlier.
+    pub fn set_progress_text(&mut self, text: &str) {
+        self.progress = yarnfoundry_core::follow::Progress::from_text(text);
+    }
+
+    /// The follow-along positions to store, if they changed since the last call.
+    pub fn take_progress_text(&mut self) -> Option<String> {
+        std::mem::take(&mut self.progress_changed).then(|| self.progress.to_text())
     }
 
     /// An app with the 3D figure wizard open on a loaded model (for demos and screenshots), at `step` of 5.
@@ -624,9 +640,31 @@ impl YarnFoundryApp {
         });
         egui::Panel::bottom("rows").default_size(150.0).show(ui, |ui| {
             egui::CollapsingHeader::new("Written instructions").default_open(true).show(ui, |ui| {
-                egui::ScrollArea::vertical().max_height(120.0).show(ui, |ui| {
-                    for row in yarnfoundry_core::instructions(&chart).rows.iter().take(60) {
-                        ui.label(&row.text);
+                let rows = yarnfoundry_core::instructions(&chart).rows;
+                let now = self.progress.position(&chart);
+                let mut at = now;
+                ui.horizontal(|ui| {
+                    if ui.button("Previous").clicked() {
+                        at = yarnfoundry_core::follow::step(now, -1, rows.len());
+                    }
+                    if ui.button("Next").clicked() {
+                        at = yarnfoundry_core::follow::step(now, 1, rows.len());
+                    }
+                    if let Some(row) = rows.get(now) {
+                        ui.label(format!("{} of {}: {} sts", row.number, rows.len(), row.stitches));
+                    }
+                });
+                if at != now {
+                    self.progress.set(&chart, at);
+                    self.progress_changed = true;
+                }
+                egui::ScrollArea::vertical().max_height(100.0).show(ui, |ui| {
+                    for (i, row) in rows.iter().enumerate().take(60) {
+                        if i == at {
+                            ui.add(egui::Label::new(egui::RichText::new(&row.text).strong().background_color(theme::FOLLOW_BG)));
+                        } else {
+                            ui.label(&row.text);
+                        }
                     }
                 });
             });
