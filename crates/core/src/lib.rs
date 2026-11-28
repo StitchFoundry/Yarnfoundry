@@ -12,6 +12,7 @@ pub mod pattern;
 pub mod picture;
 pub mod rounds;
 pub mod setup;
+pub mod shapes;
 pub mod slice;
 pub mod technique;
 pub mod text;
@@ -26,6 +27,7 @@ pub use pattern::{EyeMark, PartPattern, PatternRound, Terms, part_pattern, writt
 pub use picture::{PaletteSpec, Picture, PictureError, PictureOptions, chart_from_picture, rows_for_width};
 pub use rounds::{Round, RoundsError, Stitch, rounds_for_mesh};
 pub use setup::{Colours, Setup, SetupError, Size, Source, YarnWeight, presets, techniques_for};
+pub use shapes::{Shape, ShapeError, ShapeKind};
 pub use technique::{Float, TechniqueOptions, TechniqueReport, apply as apply_technique, filet_stitches};
 pub use text::{DEFAULT_MIN_ROWS, TextError, TextOptions, TextWeight, chart_from_text, text_to_mask};
 
